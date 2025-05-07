@@ -276,7 +276,7 @@ contract Collateral {
         bytes16[] memory eligible = new bytes16[](count);
         uint256 index = 0;
         for (uint256 i = 0; i < allExecutors.length; i++) {
-            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
+            if (collateralPerExecutor[miner][allExecutors[i]] >= 0) {
                 eligible[index++] = allExecutors[i];
             }
         }
