@@ -51,8 +51,8 @@ def get_transferrable_balance(w3: Web3, sender: str, recipient: str):
     return transferrable
     
 class TestCollateralContractLifecycle(unittest.TestCase):
-    USE_EXISTING_ACCOUNTS = False
-    DEPLOY_CONTRACT = True
+    USE_EXISTING_ACCOUNTS = True
+    DEPLOY_CONTRACT = False
 
     # Add a helper to run subprocess commands with a sleep delay
     def run_cmd(self, cmd, env, capture=True, sleep_time=1):
@@ -62,7 +62,8 @@ class TestCollateralContractLifecycle(unittest.TestCase):
 
     def setUp(self):
         # Use the local RPC URL here
-        self.RPC_URL = "https://test.chain.opentensor.ai"
+        # self.RPC_URL = "https://test.chain.opentensor.ai"
+        self.RPC_URL = "http://127.0.0.1:8545"
         self.w3 = Web3(Web3.HTTPProvider(self.RPC_URL))
         self.assertTrue(self.w3.is_connected(), "Cannot connect to Bittensor RPC")
         print("Connected to Bittensor RPC")
@@ -86,13 +87,19 @@ class TestCollateralContractLifecycle(unittest.TestCase):
             print("Validator SS58:", validator_ss58)
             print("Miner SS58:", miner_ss58)
             
-            contract_address = "0xfE7Bf1a8FC8b087E2a08997c3C41e0f4c1680c08"
+            contract_address = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 
-            subprocess.run(["btcli", "w", "transfer", "--network", "test", "--dest", validator_ss58, "--amount", "0.5"])
+            subprocess.run(["btcli", "w", "transfer", "--network", "local", "--dest", validator_ss58, "--amount", "0.5"])
             time.sleep(3)
 
-            subprocess.run(["btcli", "w", "transfer", "--network", "test", "--dest", miner_ss58, "--amount", "3.5"])
+            subprocess.run(["btcli", "w", "transfer", "--network", "local", "--dest", miner_ss58, "--amount", "3.5"])
             time.sleep(3)
+
+            balance = self.w3.eth.get_balance(validator_address)
+            print("Validator Balance:", self.w3.from_wei(balance, 'ether'))
+            
+            balance = self.w3.eth.get_balance(miner_address)
+            print("Miner Balance:", self.w3.from_wei(balance, 'ether'))
 
         else:
             # === Step 1: Create Validator Account ===
@@ -173,6 +180,7 @@ class TestCollateralContractLifecycle(unittest.TestCase):
         print("Miner Address:", miner_address)
         print("Miner Key:", miner_key)
 
+        executor_uuid = uuid_to_bytes16("72a1d228-3c8c-45cb-8b84-980071592589")  # Example UUID
         # Refactored deposit collateral steps as a loop
         deposit_tasks = [
             ("3a5ce92a-a066-45f7-b07d-58b3b7986464", True),
@@ -201,11 +209,11 @@ class TestCollateralContractLifecycle(unittest.TestCase):
 
         print("Result : ", result.stdout.strip())
 
-        print("Starting slash collateral...")
+        # print("Starting slash collateral...")
         # === Step 8: Validator Slashes Miner ===
-        env["PRIVATE_KEY"] = validator_key
-        self.run_cmd(["python", "scripts/slash_collateral.py", contract_address, miner_address, "0.01", "slashit", executor_uuid], env=env)
-        print("Slash collateral finished")
+        # env["PRIVATE_KEY"] = validator_key
+        # self.run_cmd(["python", "scripts/slash_collateral.py", contract_address, miner_address, "0.01", "slashit", executor_uuid], env=env)
+        # print("Slash collateral finished")
 
         print("Listing eligible executors after penalty...")
         result = self.run_cmd(["python", "scripts/get_eligible_executors.py", contract_address, miner_address], capture=True, env=env)
@@ -216,23 +224,23 @@ class TestCollateralContractLifecycle(unittest.TestCase):
         print("Starting reclaim collateral...")
 
         env["PRIVATE_KEY"] = miner_key
-        # result = self.run_cmd(
-        #     ["python", "scripts/reclaim_collateral.py", contract_address, "0.003", "please gimme money back. this reclaim will be denied", executor_uuid],
-        #     env=env
-        # )
-        # print("Reclaim Result: ", result.stdout.strip())
-        # match = re.search(r"Reclaim ID:\s*(\d+)", result.stdout)
-        # if match:
-        #     deny_reclaim_id = int(match.group(1))
-        #     print("First Reclaim ID:", deny_reclaim_id)
-        # else:
-        #     raise ValueError("Reclaim ID not found in the output.")
+        result = self.run_cmd(
+            ["python", "scripts/reclaim_collateral.py", contract_address, "0.1", "please gimme money back. this reclaim will be denied", executor_uuid],
+            env=env
+        )
+        print("Reclaim Result: ", result.stdout.strip())
+        match = re.search(r"Reclaim ID:\s*(\d+)", result.stdout)
+        if match:
+            deny_reclaim_id = int(match.group(1))
+            print("First Reclaim ID:", deny_reclaim_id)
+        else:
+            raise ValueError("Reclaim ID not found in the output.")
 
-        # reclaim_result = self.run_cmd(
-        #     ["python", "scripts/reclaim_collateral.py", contract_address, "0.003", "please gimme money back. this reclaim will be finalized", executor_uuid],
-        #     env=env
-        # )
-        # print("Reclaim Result: ", reclaim_result.stdout.strip())
+        reclaim_result = self.run_cmd(
+            ["python", "scripts/reclaim_collateral.py", contract_address, "0.1", "please gimme money back. this reclaim will be finalized", executor_uuid],
+            env=env
+        )
+        print("Reclaim Result: ", reclaim_result.stdout.strip())
         # match = re.search(r"Reclaim ID:\s*(\d+)", reclaim_result.stdout)
         # if match:
         #     finalize_reclaim_id = int(match.group(1))
