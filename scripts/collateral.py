@@ -7,18 +7,21 @@ def uuid_to_bytes16(uuid_str):
     return "0x" + u.bytes.hex()
 
 # Connect to local Ethereum node
-w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
-w3.eth.default_account = w3.eth.accounts[0]
+w3 = Web3(Web3.HTTPProvider("https://test.chain.opentensor.ai"))
+# w3.eth.default_account = w3.eth.accounts[0]
 
 # ABI and contract address from deployment
 with open('artifacts/contracts/Collateral.sol/Collateral.json', 'r') as f:
     artifact = json.load(f)
 abi = artifact['abi']
 
-# contract_address = "0x6E66bebe0C0101cc778d359858b1e5bA1ebB3Aae"
-contract_address = "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d"
-
+contract_address = "0x6E66bebe0C0101cc778d359858b1e5bA1ebB3Aae"
 contract = w3.eth.contract(address=contract_address, abi=abi)
+
+# Check if contract is deployed
+def is_contract_deployed(address):
+    code = w3.eth.get_code(address)
+    return code != b'0x' and code != b''
 
 # Example calls to Collateral contract methods
 
@@ -59,27 +62,24 @@ def get_eligible_executors(miner):
 
 # Example usage
 if __name__ == "__main__":
-    validator_address = "0x0000000000000000000000000000000000000001"
-    executor_uuid = "3a5ce92a-a066-45f7-b07d-58b3b7986464"
-    miner_address = w3.eth.accounts[0]
-    
-    print("Miner address:", miner_address)
-    # Deposit example
-    deposit_collateral(validator_address, uuid_to_bytes16(executor_uuid), Web3.to_wei(1, 'ether'))
+    if not is_contract_deployed(contract_address):
+        print(f"Contract not deployed at address {contract_address}")
+    else:
+        validator_address = "0xE1A07A44ac6f8423bA3b734F0cAfC6F87fd385Fc"
+        executor_uuid = "3a5ce92a-a066-45f7-b07d-58b3b7986464"
+        # miner_address = w3.eth.accounts[0]
+        miner_address = "0x19F71e76B34A8Dc01944Cf3B76478B45DE05B75b"
+        
+        print("Miner address:", miner_address)
 
-    collateral = contract.functions.collaterals(miner_address).call()
-    print("Collateral for miner:", Web3.from_wei(collateral, 'ether'), "TAO")
-    # # Reclaim example
-    # reclaim_collateral(Web3.to_wei(0.5, 'ether'), "http://example.com/reclaim", b"checksum1234", executor_uuid)
+        balance = w3.eth.get_balance(miner_address)
+        print("Miner Balance:", w3.from_wei(balance, 'ether'))
 
-    # # Finalize reclaim example
-    # finalize_reclaim(1)
+        # Deposit example
+        deposit_collateral(validator_address, uuid_to_bytes16(executor_uuid), Web3.to_wei(1, 'ether'))
 
-    # # Deny reclaim example
-    # deny_reclaim_request(1, "http://example.com/deny", b"checksum5678")
-
-    # # Slash collateral example
-    # slash_collateral(miner_address, Web3.to_wei(0.1, 'ether'), "http://example.com/slash", b"checksum91011", executor_uuid)
-
-    # # Get eligible executors example
-    get_eligible_executors(miner_address)
+        try:
+            collateral = contract.functions.collaterals(miner_address).call()
+            print("Collateral for miner:", Web3.from_wei(collateral, 'ether'), "TAO")
+        except Exception as e:
+            print("Error calling contract function:", e)
