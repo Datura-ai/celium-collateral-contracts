@@ -15,7 +15,9 @@ with open('artifacts/contracts/Collateral.sol/Collateral.json', 'r') as f:
     artifact = json.load(f)
 abi = artifact['abi']
 
+# contract_address = "0x6E66bebe0C0101cc778d359858b1e5bA1ebB3Aae"
 contract_address = "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d"
+
 contract = w3.eth.contract(address=contract_address, abi=abi)
 
 # Example calls to Collateral contract methods
@@ -59,11 +61,14 @@ def get_eligible_executors(miner):
 if __name__ == "__main__":
     validator_address = "0x0000000000000000000000000000000000000001"
     executor_uuid = "3a5ce92a-a066-45f7-b07d-58b3b7986464"
-    miner_address = w3.eth.accounts[1]
-
+    miner_address = w3.eth.accounts[0]
+    
+    print("Miner address:", miner_address)
     # Deposit example
     deposit_collateral(validator_address, uuid_to_bytes16(executor_uuid), Web3.to_wei(1, 'ether'))
 
+    collateral = contract.functions.collaterals(miner_address).call()
+    print("Collateral for miner:", Web3.from_wei(collateral, 'ether'), "TAO")
     # # Reclaim example
     # reclaim_collateral(Web3.to_wei(0.5, 'ether'), "http://example.com/reclaim", b"checksum1234", executor_uuid)
 
