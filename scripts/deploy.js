@@ -1,6 +1,6 @@
 const hre = require("hardhat");
 
-async function main() {
+async function deployCollateral() {
   const [deployer] = await hre.ethers.getSigners();
 
   const Collateral = await hre.ethers.getContractFactory("Collateral");
@@ -10,7 +10,24 @@ async function main() {
   console.log("Collateral deployed to:", await contract.getAddress());
 }
 
+async function deployValueStore() {
+  const [deployer] = await hre.ethers.getSigners();
+
+  const Collateral = await hre.ethers.getContractFactory("ValueStore");
+  const contract = await Collateral.deploy();
+
+  await contract.waitForDeployment();
+  console.log("ValueStore deployed to:", await contract.getAddress());
+}
+
+
+async function main() {
+  await deployCollateral();
+  await deployValueStore();
+}
+
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

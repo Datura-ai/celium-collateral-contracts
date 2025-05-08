@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
-import "hardhat/console.sol";
 
 contract Collateral {
     uint16 public immutable NETUID;
@@ -91,7 +90,6 @@ contract Collateral {
         }
 
         require(validator != address(0), "Validator address must be non-zero");
-        console.log("Depositing:", msg.sender, msg.value);
 
         // Handle validator switch
         address currentValidator = validatorOfMiner[msg.sender];
@@ -110,13 +108,13 @@ contract Collateral {
 
         collaterals[msg.sender] += msg.value;
 
-        if (collateralPerExecutor[msg.sender][executorUuid] == 0) {
-            knownExecutorUuids[msg.sender].push(executorUuid);
-        }
-
         collateralPerExecutor[msg.sender][executorUuid] += msg.value;
 
         emit Deposit(msg.sender, msg.value);
+
+        if (collateralPerExecutor[msg.sender][executorUuid] > 0) {
+            knownExecutorUuids[msg.sender].push(executorUuid);
+        }
     }
 
     /// @notice Initiates a process to reclaim message sender's collateral from the contract
