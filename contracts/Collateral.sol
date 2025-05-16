@@ -39,6 +39,7 @@ contract Collateral {
     event Denied(uint256 indexed reclaimRequestId, string url, bytes16 urlContentMd5Checksum);
     event Slashed(address indexed account, uint256 amount, string url, bytes16 urlContentMd5Checksum);
     event HotkeyMapped(bytes32 indexed hotkey, address indexed ethereumAddress);
+    event ValidatorUpdateAttemptFailed(address indexed miner, address indexed caller, address indexed newValidator);
 
     error AmountZero();
     error BeforeDenyTimeout();
@@ -270,7 +271,48 @@ contract Collateral {
         emit Slashed(miner, amount, url, urlContentMd5Checksum);
     }
 
-     /// @notice Returns a list of executors for a specific miner that have more than 0 TAO in collateral
+    /// @notice Updates the validator for a specific miner and transfers associated collateral
+    /// @dev Can only be called by the current validator of the miner
+    /// @param miner The address of the miner whose validator is being updated
+    /// @param newValidator The address of the new validator
+    function updateValidatorForMiner(address miner, address newValidator) external {
+        if (validatorOfMiner[miner] != msg.sender) {
+            emit ValidatorUpdateAttemptFailed(miner, msg.sender, newValidator);
+            revert NotTrustee();
+        }
+        if (newValidator == address(0)) {
+            revert InvalidDepositMethod();
+        }
+
+        // Transfer collateral under pending reclaims
+        uint256 pendingCollateral = collateralUnderPendingReclaims[miner];
+        collateralUnderPendingReclaims[miner] = 0;
+
+        // Transfer total collateral
+        uint256 totalCollateral = collaterals[miner];
+        collaterals[miner] = 0;
+
+        // Transfer collateral per executor
+        bytes16[] storage executorList = knownExecutorUuids[miner];
+        for (uint256 i = 0; i < executorList.length; i++) {
+            bytes16 executorUuid = executorList[i];
+            collateralPerExecutor[miner][executorUuid] = 0;
+        }
+
+        // Update validator
+        validatorOfMiner[miner] = newValidator;
+
+        // Reassign collateral amounts to the new validator
+        collateralUnderPendingReclaims[miner] = pendingCollateral;
+        collaterals[miner] = totalCollateral;
+        for (uint256 i = 0; i < executorList.length; i++) {
+            bytes16 executorUuid = executorList[i];
+            uint256 executorCollateral = collateralPerExecutor[miner][executorUuid];
+            collateralPerExecutor[miner][executorUuid] = executorCollateral;
+        }
+    }
+
+    /// @notice Returns a list of executors for a specific miner that have more than 0 TAO in collateral
     /// @dev This function checks the `collateralPerExecutor` mapping for the specified miner's executors.
     /// @param miner The address of the miner for whom the executors are to be fetched.
     /// @return A dynamic array of `bytes16` UUIDs representing executors with more than 0 TAO in collateral for the specified miner.
