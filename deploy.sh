@@ -20,9 +20,9 @@
 #
 
 # Check if all required arguments are provided
-if [ "$#" -ne 4 ]; then
+if [ "$#" -ne 3 ]; then
     echo "Error: Required arguments missing"
-    echo "Usage: $0 <netuid_u16> <trustee_h160_address> <min_collateral_increase_u256> <deny_timeout_u64>"
+    echo "Usage: $0 <netuid_u16> <min_collateral_increase_u256> <deny_timeout_u64>"
     exit 1
 fi
 

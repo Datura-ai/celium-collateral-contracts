@@ -15,4 +15,5 @@ else
 fi
 
 mv abi.json.temp abi.json
+cp abi.json ./celium_collateral_contracts/abi.json
 exit $EXIT_CODE

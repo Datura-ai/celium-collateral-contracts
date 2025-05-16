@@ -8,13 +8,9 @@ from web3 import Web3
 import uuid
 import re
 
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from scripts.address_conversion import h160_to_ss58
+# Update import to use the scripts package
+from celium_collateral_contracts.address_conversion import h160_to_ss58
 
-def uuid_to_bytes16(uuid_str):
-    u = uuid.UUID(uuid_str)
-    return "0x" + u.bytes.hex()
 
 def get_transferrable_balance(w3: Web3, sender: str, recipient: str):
     # Build a dummy transaction to estimate gas
@@ -52,7 +48,7 @@ def get_transferrable_balance(w3: Web3, sender: str, recipient: str):
     
 class TestCollateralContractLifecycle(unittest.TestCase):
     USE_EXISTING_ACCOUNTS = True
-    DEPLOY_CONTRACT = True
+    DEPLOY_CONTRACT = False
 
     # Add a helper to run subprocess commands with a sleep delay
     def run_cmd(self, cmd, env, capture=True, sleep_time=1):
@@ -62,7 +58,7 @@ class TestCollateralContractLifecycle(unittest.TestCase):
 
     def setUp(self):
         # Use the local RPC URL here
-        self.RPC_URL = "https://test.chain.opentensor.ai"
+        self.RPC_URL = "https://test.finney.opentensor.ai"
         # self.RPC_URL = "http://127.0.0.1:8545"
         self.w3 = Web3(Web3.HTTPProvider(self.RPC_URL))
         self.assertTrue(self.w3.is_connected(), "Cannot connect to Bittensor RPC")
@@ -74,9 +70,15 @@ class TestCollateralContractLifecycle(unittest.TestCase):
 
         chain_id = self.w3.eth.chain_id
         print(f"Verified chain ID: {chain_id}")
-        balance = self.w3.eth.get_balance("0xA2035D25d86bb68A9eFDfC718F1BDD60DCD9B4e2")
-        print("Validator Balance:", self.w3.from_wei(balance, 'ether'))
 
+        # Update script paths to match the updated folder structure
+        deposit_script = "celium_collateral_contracts/deposit_collateral.py"
+        get_miners_collateral_script = "celium_collateral_contracts/get_miners_collateral.py"
+        get_eligible_executors_script = "celium_collateral_contracts/get_eligible_executors.py"
+        reclaim_collateral_script = "celium_collateral_contracts/reclaim_collateral.py"
+        deny_request_script = "celium_collateral_contracts/deny_request.py"
+        finalize_reclaim_script = "celium_collateral_contracts/finalize_reclaim.py"
+        get_reclaim_requests_script = "celium_collateral_contracts/get_reclaim_requests.py"
         if self.USE_EXISTING_ACCOUNTS:
             validator_address = "0xE1A07A44ac6f8423bA3b734F0cAfC6F87fd385Fc"
             validator_key = "434469242ece0d04889fdfa54470c3685ac226fb3756f5eaf5ddb6991e1698a3"
@@ -146,8 +148,8 @@ class TestCollateralContractLifecycle(unittest.TestCase):
         print("Deploying contract...", self.RPC_URL)
           # Define the arguments for deployment
         netuid = 1  # Example netuid
-        min_collateral_increase = 10  # Example amount in wei
-        deny_timeout = 120  # Example deny timeout in seconds
+        min_collateral_increase = 1000000000000000  # Example amount in wei
+        deny_timeout = 3600  # Example deny timeout in seconds
 
         if self.DEPLOY_CONTRACT:
             print("Deploying contract with forge...")
@@ -156,7 +158,7 @@ class TestCollateralContractLifecycle(unittest.TestCase):
                     "forge", "create", "src/Collateral.sol:Collateral",
                     "--broadcast",
                     "--rpc-url", self.RPC_URL,
-                    "--private-key", validator_key,
+                    "--private-key", miner_key,
                     "--constructor-args", str(netuid), str(min_collateral_increase), str(deny_timeout)
                 ],
                 capture_output=True, text=True
@@ -164,11 +166,11 @@ class TestCollateralContractLifecycle(unittest.TestCase):
             self.assertIn("Deployed to:", deploy_result.stdout, deploy_result.stderr)
             contract_line = [line for line in deploy_result.stdout.splitlines() if "Deployed to:" in line][0]
             contract_address = contract_line.split(": ")[-1]
-            print("Deployed Contract Address:", contract_address)
             self.assertTrue(Web3.is_address(contract_address))
         else:
-            contract_address = "0xfDe42bbA16714e8B635F455Da78CBC7AeE6e78f4"
+            contract_address = "0x3512F750a13aF6EF0e62eCD8d4Badf779ea9033f"
 
+        print("Deployed Contract Address:", contract_address)
         # === Step 6: Miner Deposits Collateral ===
         env["PRIVATE_KEY"] = miner_key
 
@@ -178,98 +180,143 @@ class TestCollateralContractLifecycle(unittest.TestCase):
         print("Miner Address:", miner_address)
         print("Miner Key:", miner_key)
 
-        executor_uuid = uuid_to_bytes16("72a1d228-3c8c-45cb-8b84-980071592589")  # Example UUID
+        executor_uuid = "72a1d228-3c8c-45cb-8b84-980071592589"  # Example UUID
         # Refactored deposit collateral steps as a loop
         deposit_tasks = [
             ("3a5ce92a-a066-45f7-b07d-58b3b7986464", False),
             ("72a1d228-3c8c-45cb-8b84-980071592589", False),
-            ("15c2ff27-0a4d-4987-bbc9-fa009ef9f7d2", False)
+            ("15c2ff27-0a4d-4987-bbc9-fa009ef9f7d2", False),
+            ("335453ad-246c-4ad5-809e-e2013ca6c07e", False),
+            ("89c66519-244f-4db0-b4a7-756014d6fd24", False),
+            ("af3f1b82-ff98-44c8-b130-d948a2a56b44", False),
+            ("ee3002d9-71f8-4a83-881d-48bd21b6bdd1", False),
         ]
-        for uuid_str, capture_output in deposit_tasks:
-            executor_uuid = uuid_to_bytes16(uuid_str)  # Convert UUID to bytes32
-            print(f"Starting deposit collateral for this executor {executor_uuid}...")
-            result = self.run_cmd(
-                ["python", "scripts/deposit_collateral.py", contract_address, "0.0001", validator_address, executor_uuid],
-                env=env, capture=capture_output
-            )
-            if capture_output:
-                print(result.stdout.strip())
+        # for uuid_str, capture_output in deposit_tasks:
+        #     print(f"Starting deposit collateral for executor {uuid_str}...")
+        #     result = self.run_cmd(
+        #         [
+        #             "python", deposit_script,
+        #             "--contract-address", contract_address,
+        #             "--amount-tao", "0.0001",
+        #             "--validator-address", validator_address,
+        #             "--executor-uuid", uuid_str
+        #         ],
+        #         env=env, capture=capture_output
+        #     )
+        #     if capture_output:
+        #         print(result.stdout.strip())
 
         # === Step 7: Verify Collateral ===
-        check = self.run_cmd(["python", "scripts/get_miners_collateral.py", contract_address, miner_address],
-                             capture=True, env=env)
+        check = self.run_cmd(
+            [
+                "python", get_miners_collateral_script,
+                "--contract-address", contract_address,
+                "--miner-address", miner_address,
+                "--network", "test"
+            ],
+            capture=True, env=env
+        )
 
         print("[COLLATERAL]:", check.stdout.strip())
         print("Deposit collateral finished")
 
         print("Listing eligible executors before penalty...")
-        result = self.run_cmd(["python", "scripts/get_eligible_executors.py", contract_address, miner_address], capture=True, env=env)
 
-        print("Result : ", result.stdout.strip())
+        executors = []
+        for uuid_str, capture_output in deposit_tasks:
+            executors.append(uuid_str)  # Keep original UUID strings
 
-        # print("Starting slash collateral...")
-        # === Step 8: Validator Slashes Miner ===
-        # env["PRIVATE_KEY"] = validator_key
-        # self.run_cmd(["python", "scripts/slash_collateral.py", contract_address, miner_address, "0.01", "slashit", executor_uuid], env=env)
-        # print("Slash collateral finished")
+        executor_uuids_str = ",".join(executors)  # Join UUIDs with commas
+        print("executor_uuids_str:", executor_uuids_str)
 
-        print("Listing eligible executors after penalty...")
-        result = self.run_cmd(["python", "scripts/get_eligible_executors.py", contract_address, miner_address], capture=True, env=env)
-
-        print("Result : ", result.stdout.strip())
+        result = self.run_cmd(
+            [
+                "python", get_eligible_executors_script,
+                "--contract-address", contract_address,
+                "--miner-address", miner_address,
+                "--executor-uuids", executor_uuids_str,
+                "--network", "test"
+            ],
+            capture=True,
+            env=env
+        )
+        time.sleep(3)
+        print("Result: ", result.stdout.strip())
+        # Extract UUIDs from the result log
+        result_output = result.stdout.strip()
+        if "Eligible Executors:" in result_output:
+            eligible_executors = result_output.split("Eligible Executors: ")[1].split(",")
+            print("Eligible Executors as list:", eligible_executors)
 
         # === Step 9: Miner Reclaims Collateral ===
         print("Starting reclaim collateral...")
-
-        env["PRIVATE_KEY"] = miner_key
         result = self.run_cmd(
-            ["python", "scripts/reclaim_collateral.py", contract_address, "0.1", "please gimme money back. this reclaim will be denied", executor_uuid],
+            [
+                "python", reclaim_collateral_script,
+                "--contract-address", contract_address,
+                "--amount-tao", "0.00001",
+                "--reason", "please gimme money back",
+                "--executor-uuid", "72a1d228-3c8c-45cb-8b84-980071592589",
+                "--network", "test"
+            ],
             env=env
         )
         print("Reclaim Result: ", result.stdout.strip())
-        match = re.search(r"Reclaim ID:\s*(\d+)", result.stdout)
-        if match:
-            deny_reclaim_id = int(match.group(1))
-            print("First Reclaim ID:", deny_reclaim_id)
-        else:
-            raise ValueError("Reclaim ID not found in the output.")
 
-        reclaim_result = self.run_cmd(
-            ["python", "scripts/reclaim_collateral.py", contract_address, "0.1", "please gimme money back. this reclaim will be finalized", executor_uuid],
-            env=env
-        )
-        print("Reclaim Result: ", reclaim_result.stdout.strip())
-        # match = re.search(r"Reclaim ID:\s*(\d+)", reclaim_result.stdout)
-        # if match:
-        #     finalize_reclaim_id = int(match.group(1))
-        #     print("Second Reclaim ID:", finalize_reclaim_id)
-        # else:
-        #     raise ValueError("Reclaim ID not found in the output.")
-        # print("Reclaim collateral finished")
-        
         # === Step 10: Validator Checks Requests ===
         latest_block = self.w3.eth.block_number
         print(f"All reclaim requests between these blocks: {latest_block - 10}, {latest_block + 10}")
 
-        result = self.run_cmd([
-            "python", "scripts/get_reclaim_requests.py", contract_address,
-            str(latest_block - 10), str(latest_block + 10)
-        ], env=env)
+        result = self.run_cmd(
+            [
+                "python", get_reclaim_requests_script,
+                "--contract-address", contract_address,
+                "--start-block", str(latest_block - 10),
+                "--end-block", str(latest_block + 10),
+                "--network", "test"
+            ],
+            env=env
+        )
 
+        deny_reclaim_id = 2
+        finalize_reclaim_id = 1
         # === Step 11: Validator Denies Request 1, Finalizes Request 2 ===
-        # env["PRIVATE_KEY"] = validator_key
-        # print("Starting deny reclaim request")
-        # self.run_cmd(["python", "scripts/deny_request.py", contract_address, str(deny_reclaim_id), "no, i will not"], env=env)
+        env["PRIVATE_KEY"] = validator_key
+        print("Starting deny reclaim request")
+        self.run_cmd(
+            [
+                "python", deny_request_script,
+                "--contract-address", contract_address,
+                "--reclaim-id", str(deny_reclaim_id),
+                "--reason", "no, i will not",
+                "--network", "test"
+            ],
+            env=env
+        )
 
-        # print("Deny reclaim request finished")
+        print("Deny reclaim request finished")
 
-        # print("Starting finalize reclaim request")
-        # self.run_cmd(["python", "scripts/finalize_reclaim.py", contract_address, str(finalize_reclaim_id)], env=env)
+        print("Starting finalize reclaim request")
+        self.run_cmd(
+            [
+                "python", finalize_reclaim_script,
+                "--contract-address", contract_address,
+                "--reclaim-id", str(finalize_reclaim_id),
+                "--network", "test"
+            ],
+            env=env
+        )
 
-        # env["PRIVATE_KEY"] = miner_key
-        # # === Step 12: Final Collateral Check ===
-        result = self.run_cmd(["python", "scripts/get_miners_collateral.py", contract_address, miner_address],
-                              capture=True, env=env)
+        # === Step 12: Final Collateral Check ===
+        result = self.run_cmd(
+            [
+                "python", get_miners_collateral_script,
+                "--contract-address", contract_address,
+                "--miner-address", miner_address,
+                "--network", "test"
+            ],
+            capture=True, env=env
+        )
         print("[FINAL COLLATERAL]:", result.stdout.strip())
 
         print("Checking account balances before transfer...")
@@ -284,25 +331,6 @@ class TestCollateralContractLifecycle(unittest.TestCase):
 
         print("Validator transferrable balance:", self.w3.from_wei(validator_transferrable, 'ether'))
         print("Miner transferrable balance:", self.w3.from_wei(miner_transferrable, 'ether'))
-
-        # # === Step 13: Send to SS58 Precompile ===
-        # result = self.run_cmd([
-        #     "python", "scripts/send_to_ss58_precompile.py",
-        #     "5CoZwx53nNzfnDLqxYjntvggyPw3Xee1r9b68HFw1N6UEa1X",
-        #     str(miner_transferrable)
-        # ], capture=True, env=env)
-
-        # print("Send to celium testnet wallet from miner wallet:", result.stdout.strip())
-
-        # env["PRIVATE_KEY"] = validator_key
-
-        # result = self.run_cmd([
-        #     "python", "scripts/send_to_ss58_precompile.py",
-        #     "5CoZwx53nNzfnDLqxYjntvggyPw3Xee1r9b68HFw1N6UEa1X",
-        #     str(validator_transferrable)
-        # ], capture=True, env=env)
-
-        # print("Send to celium testnet wallet from validator wallet:", result.stdout.strip())
 
         print("Checking account balances after transfer...")
 

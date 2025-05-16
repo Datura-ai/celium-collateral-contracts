@@ -13,7 +13,8 @@ contract Collateral {
     mapping(address => address) public validatorOfMiner;
 
     mapping(address => mapping(bytes16 => uint256)) public collateralPerExecutor;
-    mapping(address => bytes16[]) private knownExecutorUuids;
+
+    mapping(bytes32 => address) public hotkeyToEthereumAddress;
 
     uint256 private nextReclaimId;
 
@@ -36,6 +37,7 @@ contract Collateral {
     event Reclaimed(uint256 indexed reclaimRequestId, address indexed account, uint256 amount);
     event Denied(uint256 indexed reclaimRequestId, string url, bytes16 urlContentMd5Checksum);
     event Slashed(address indexed account, uint256 amount, string url, bytes16 urlContentMd5Checksum);
+    event HotkeyMapped(bytes32 indexed hotkey, address indexed ethereumAddress);
 
     error AmountZero();
     error BeforeDenyTimeout();
@@ -111,10 +113,17 @@ contract Collateral {
         collateralPerExecutor[msg.sender][executorUuid] += msg.value;
 
         emit Deposit(msg.sender, msg.value);
+    }
 
-        if (collateralPerExecutor[msg.sender][executorUuid] > 0) {
-            knownExecutorUuids[msg.sender].push(executorUuid);
-        }
+    /// @notice Maps a Bittensor hotkey to an Ethereum address
+    /// @param hotkey The Bittensor hotkey (as bytes32) to map
+    /// @dev Emits a HotkeyMapped event with the hotkey and Ethereum address
+    function mapHotkeyToEthereumAddress(bytes32 hotkey) external {
+        require(hotkey != bytes32(0), "Hotkey must be non-zero");
+
+        hotkeyToEthereumAddress[hotkey] = msg.sender;
+
+        emit HotkeyMapped(hotkey, msg.sender);
     }
 
     /// @notice Initiates a process to reclaim message sender's collateral from the contract
@@ -261,13 +270,12 @@ contract Collateral {
     /// @param miner The address of the miner for whom the executors are to be fetched.
     /// @return A dynamic array of `bytes16` UUIDs representing executors with more than 0 TAO in collateral for the specified miner.
     /// @notice Returns a list of eligible executors for a specific miner that have more than 0 TAO in collateral and have not been slashed or penalized.
-    function getEligibleExecutors(address miner) external view returns (bytes16[] memory) {
-        bytes16[] memory allExecutors = knownExecutorUuids[miner];
+    function getEligibleExecutors(address miner, bytes16[] calldata executors) external view returns (bytes16[] memory) {
         uint256 count = 0;
 
         // First pass to count
-        for (uint256 i = 0; i < allExecutors.length; i++) {
-            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
+        for (uint256 i = 0; i < executors.length; i++) {
+            if (collateralPerExecutor[miner][executors[i]] > 0) {
                 count++;
             }
         }
@@ -275,9 +283,9 @@ contract Collateral {
         // Second pass to collect
         bytes16[] memory eligible = new bytes16[](count);
         uint256 index = 0;
-        for (uint256 i = 0; i < allExecutors.length; i++) {
-            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
-                eligible[index++] = allExecutors[i];
+        for (uint256 i = 0; i < executors.length; i++) {
+            if (collateralPerExecutor[miner][executors[i]] > 0) {
+                eligible[index++] = executors[i];
             }
         }
 

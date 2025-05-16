@@ -1,0 +1,17 @@
+[console_scripts]
+associate-evm-key = celium_collateral_contracts.associate_evm_key:main
+deny-request = celium_collateral_contracts.deny_request:main
+deposit-collateral = celium_collateral_contracts.deposit_collateral:main
+finalize-reclaim = celium_collateral_contracts.finalize_reclaim:main
+generate-keypair = celium_collateral_contracts.generate_keypair:main
+get-all-associations = celium_collateral_contracts.get_all_associations:main
+get-collaterals = celium_collateral_contracts.get_collaterals:main
+get-eligible-executors = celium_collateral_contracts.get_eligible_executors:main
+get-miners-collateral = celium_collateral_contracts.get_miners_collateral:main
+get-reclaim-requests = celium_collateral_contracts.get_reclaim_requests:main
+list-contracts = celium_collateral_contracts.list_contracts:main
+reclaim-collateral = celium_collateral_contracts.reclaim_collateral:main
+send-to-ss58 = celium_collateral_contracts.send_to_ss58_precompile:main
+setup-evm = celium_collateral_contracts.setup_evm:main
+slash-collateral = celium_collateral_contracts.slash_collateral:main
+verify-contract = celium_collateral_contracts.verify_contract:main

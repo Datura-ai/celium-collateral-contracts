@@ -1,0 +1,14 @@
+# Web3 for Ethereum interaction
+web3>=6.0.0
+
+
+# HTTP requests for URL content fetching
+requests>=2.32.3
+
+substrate-interface>=1.7.11
+eth-utils==2.2.2
+
+bittensor==9.0.0
+bittensor-cli==9.0.0
+bittensor-commit-reveal==0.2.0
+bittensor-wallet==3.0.3

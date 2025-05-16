@@ -1,0 +1,3 @@
+include README.md
+include LICENSE
+include celium_collateral_contracts/*.json
