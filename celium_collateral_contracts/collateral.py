@@ -3,6 +3,7 @@ import json
 import uuid
 from map_hotkey_to_ethereum import map_hotkey_to_ethereum
 from eth_account import Account
+from get_eth_address_from_hotkey import get_eth_address_from_hotkey
 
 def uuid_to_bytes16(uuid_str):
     u = uuid.UUID(uuid_str)
@@ -18,7 +19,7 @@ with open('artifacts/contracts/Collateral.sol/Collateral.json', 'r') as f:
     artifact = json.load(f)
 abi = artifact['abi']
 
-contract_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+contract_address = "0x82e01223d51Eb87e16A03E24687EDF0F294da6f1"
 contract = w3.eth.contract(address=contract_address, abi=abi)
 
 # Check if contract is deployed
@@ -115,3 +116,14 @@ if __name__ == "__main__":
         hotkey = "5CdjQSjNefhzH71jmekdYDcM9NJm48Rdbx1cQhemfmdb4UQg"
         private_key = "0x4c0883a69102937d6231471b5dbb6204fe512961708279a3f3d8f7e7a7e8a6d4"  # Example private key
         map_hotkey_to_eth_address(hotkey, private_key)
+
+        # Call get_eth_address_from_hotkey
+        try:
+            hotkey = "5CdjQSjNefhzH71jmekdYDcM9NJm48Rdbx1cQhemfmdb4UQg"
+            eth_address = get_eth_address_from_hotkey(w3, contract_address, hotkey)
+            if eth_address == "0x0000000000000000000000000000000000000000":
+                print(f"No Ethereum address mapped to hotkey {hotkey}.")
+            else:
+                print(f"Ethereum address for hotkey {hotkey}: {eth_address}")
+        except Exception as e:
+            print(f"Error retrieving Ethereum address for hotkey: {e}")

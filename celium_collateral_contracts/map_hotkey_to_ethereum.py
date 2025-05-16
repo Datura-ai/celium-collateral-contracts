@@ -6,9 +6,33 @@ from eth_utils import is_hex, to_bytes
 from celium_collateral_contracts.common import get_revert_reason, get_web3_connection, get_account, build_and_send_transaction, wait_for_receipt
 from substrateinterface.utils.ss58 import ss58_decode
 
-class DepositCollateralError(Exception):
-    """Custom exception for collateral deposit related errors."""
+class MapHotkeyError(Exception):
+    """Custom exception for mapping hotkey to ethereum address"""
     pass
+
+def decode_custom_error(data: str) -> str:
+    """
+    Decode custom error data returned by the smart contract.
+
+    Args:
+        data: Hex string of the error data.
+
+    Returns:
+        str: Decoded error message or raw data if decoding fails.
+    """
+    try:
+        # Replace with the actual error signature and parameter types
+        error_signatures = {
+            "84ee6c0a": "HotkeyAlreadyMapped(bytes32,address)"
+        }
+        error_selector = data[:10]
+        if error_selector in error_signatures:
+            if error_selector == "0x84ee6c0a":  # HotkeyAlreadyMapped
+                decoded = decode_abi(["bytes32", "address"], bytes.fromhex(data[10:]))
+                return f"{error_signatures[error_selector]}: hotkey={decoded[0].hex()}, existingAddress={decoded[1]}"
+        return f"Unrecognized error data: {data}"
+    except Exception:
+        return f"Unrecognized error data: {data}"
 
 def map_hotkey_to_ethereum(w3: Web3, contract_address: str, sender_account: Account, hotkey: str) -> dict:
     """
@@ -26,8 +50,7 @@ def map_hotkey_to_ethereum(w3: Web3, contract_address: str, sender_account: Acco
     abi = [
         {
             "inputs": [
-                {"internalType": "bytes32", "name": "hotkey", "type": "bytes32"},
-                {"internalType": "address", "name": "ethereumAddress", "type": "address"},
+                {"internalType": "bytes32", "name": "hotkey", "type": "bytes32"}
             ],
             "name": "mapHotkeyToEthereumAddress",
             "outputs": [],
@@ -52,7 +75,7 @@ def map_hotkey_to_ethereum(w3: Web3, contract_address: str, sender_account: Acco
     try:
         tx_hash = build_and_send_transaction(
             w3,
-            contract.functions.mapHotkeyToEthereumAddress(hotkey_bytes32, ethereum_address),  # Pass Ethereum address
+            contract.functions.mapHotkeyToEthereumAddress(hotkey_bytes32),  # Pass Ethereum address
             sender_account,
             value=0  # Ensure no Ether is sent with the transaction
         )
@@ -62,7 +85,7 @@ def map_hotkey_to_ethereum(w3: Web3, contract_address: str, sender_account: Acco
 
         if receipt['status'] == 0:
             revert_reason = get_revert_reason(w3, tx_hash, receipt['blockNumber'])
-            raise DepositCollateralError(f"Transaction failed for mapping hotkey to address. Revert reason: {revert_reason}")
+            raise MapHotkeyError(f"Transaction failed for mapping hotkey to address. Revert reason: {revert_reason}")
 
         return receipt
 
@@ -70,7 +93,10 @@ def map_hotkey_to_ethereum(w3: Web3, contract_address: str, sender_account: Acco
         error_data = e.args[0]
         if isinstance(error_data, dict) and 'message' in error_data:
             if "Sender doesn't have enough funds" in error_data['message']:
-                raise DepositCollateralError("Insufficient funds in the sender's account to cover the transaction cost.")
+                raise MapHotkeyError("Insufficient funds in the sender's account to cover the transaction cost.")
+            elif "reverted with an unrecognized custom error" in error_data['message']:
+                custom_error = decode_custom_error(error_data.get('data', ''))
+                raise MapHotkeyError(f"Custom error encountered: {custom_error}")
         raise  # Re-raise other exceptions
 
 

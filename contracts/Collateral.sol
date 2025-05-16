@@ -49,6 +49,7 @@ contract Collateral {
     error ReclaimAmountTooSmall();
     error ReclaimNotFound();
     error TransferFailed();
+    error HotkeyAlreadyMapped(bytes32 hotkey, address existingAddress);
 
     /// @notice Initializes a new Collateral contract with specified parameters
     /// @param netuid The netuid of the subnet
