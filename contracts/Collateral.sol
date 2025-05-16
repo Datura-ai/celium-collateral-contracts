@@ -15,6 +15,7 @@ contract Collateral {
     mapping(address => mapping(bytes16 => uint256)) public collateralPerExecutor;
 
     mapping(bytes32 => address) public hotkeyToEthereumAddress;
+    mapping(address => bytes16[]) private knownExecutorUuids;
 
     uint256 private nextReclaimId;
 
@@ -114,6 +115,9 @@ contract Collateral {
         collateralPerExecutor[msg.sender][executorUuid] += msg.value;
 
         emit Deposit(msg.sender, msg.value);
+
+        bytes16[] storage executorList = knownExecutorUuids[msg.sender];
+        executorList.push(executorUuid);
     }
 
     /// @notice Maps a Bittensor hotkey to an Ethereum address
@@ -266,17 +270,18 @@ contract Collateral {
         emit Slashed(miner, amount, url, urlContentMd5Checksum);
     }
 
-    /// @notice Returns a list of executors for a specific miner that have more than 0 TAO in collateral
+     /// @notice Returns a list of executors for a specific miner that have more than 0 TAO in collateral
     /// @dev This function checks the `collateralPerExecutor` mapping for the specified miner's executors.
     /// @param miner The address of the miner for whom the executors are to be fetched.
     /// @return A dynamic array of `bytes16` UUIDs representing executors with more than 0 TAO in collateral for the specified miner.
     /// @notice Returns a list of eligible executors for a specific miner that have more than 0 TAO in collateral and have not been slashed or penalized.
-    function getEligibleExecutors(address miner, bytes16[] calldata executors) external view returns (bytes16[] memory) {
+    function getEligibleExecutors(address miner) external view returns (bytes16[] memory) {
+        bytes16[] memory allExecutors = knownExecutorUuids[miner];
         uint256 count = 0;
 
         // First pass to count
-        for (uint256 i = 0; i < executors.length; i++) {
-            if (collateralPerExecutor[miner][executors[i]] > 0) {
+        for (uint256 i = 0; i < allExecutors.length; i++) {
+            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
                 count++;
             }
         }
@@ -284,9 +289,9 @@ contract Collateral {
         // Second pass to collect
         bytes16[] memory eligible = new bytes16[](count);
         uint256 index = 0;
-        for (uint256 i = 0; i < executors.length; i++) {
-            if (collateralPerExecutor[miner][executors[i]] > 0) {
-                eligible[index++] = executors[i];
+        for (uint256 i = 0; i < allExecutors.length; i++) {
+            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
+                eligible[index++] = allExecutors[i];
             }
         }
 

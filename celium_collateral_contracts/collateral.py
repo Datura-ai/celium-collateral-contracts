@@ -19,7 +19,7 @@ with open('artifacts/contracts/Collateral.sol/Collateral.json', 'r') as f:
     artifact = json.load(f)
 abi = artifact['abi']
 
-contract_address = "0x82e01223d51Eb87e16A03E24687EDF0F294da6f1"
+contract_address = "0x04C89607413713Ec9775E14b954286519d836FEf"
 contract = w3.eth.contract(address=contract_address, abi=abi)
 
 # Check if contract is deployed
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         try:
             collateral = contract.functions.collaterals(miner_address).call()
             print("Collateral for miner:", Web3.from_wei(collateral, 'ether'), "ETH")
-            
+            get_eligible_executors(miner_address)
         except Exception as e:
             print("Error calling contract function:", e)
 
