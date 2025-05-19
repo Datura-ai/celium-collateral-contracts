@@ -68,7 +68,7 @@ def get_eligible_executors(miner):
     print("Eligible executors:", executors)
 
 # Get miner from validator
-def get_miner_from_validator(validator):
+def get_validator_from_miner(validator):
     """
     Retrieves the miner associated with a specific validator.
     """
@@ -91,7 +91,7 @@ def map_hotkey_to_eth_address(hotkey, private_key):
     """
     try:
         sender_account = Account.from_key(private_key)  # Convert private key to Account object
-        print("sender_account:", sender_account)
+        print("map_hotkey_to_eth_address sender_account:", sender_account.address)
         receipt = map_hotkey_to_ethereum(w3, contract_address, sender_account, hotkey)
         print(f"Hotkey mapped to Ethereum address successfully. Transaction receipt: {receipt}")
     except Exception as e:
@@ -167,9 +167,9 @@ if __name__ == "__main__":
 
         try:
             miner_address = w3.eth.default_account
-            get_miner_from_validator(validator_address)
+            get_validator_from_miner(miner_address)
         except Exception as e:
-            print(f"Error in updating validator: {e}")
+            print(f"Error in getting validator of miner: {e}")
 
 
         # Update validator for miner
