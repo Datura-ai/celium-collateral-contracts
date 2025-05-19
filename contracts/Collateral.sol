@@ -276,40 +276,15 @@ contract Collateral {
     /// @param miner The address of the miner whose validator is being updated
     /// @param newValidator The address of the new validator
     function updateValidatorForMiner(address miner, address newValidator) external {
-        // if (validatorOfMiner[miner] != msg.sender) {
-        //     emit ValidatorUpdateAttemptFailed(miner, msg.sender, newValidator);
-        //     revert NotTrustee();
-        // }
+        if (miner != msg.sender) {
+            emit ValidatorUpdateAttemptFailed(miner, msg.sender, newValidator);
+            revert NotTrustee();
+        }
         if (newValidator == address(0)) {
             revert InvalidDepositMethod();
         }
 
-        // Transfer collateral under pending reclaims
-        uint256 pendingCollateral = collateralUnderPendingReclaims[miner];
-        collateralUnderPendingReclaims[miner] = 0;
-
-        // Transfer total collateral
-        uint256 totalCollateral = collaterals[miner];
-        collaterals[miner] = 0;
-
-        // Transfer collateral per executor
-        bytes16[] storage executorList = knownExecutorUuids[miner];
-        for (uint256 i = 0; i < executorList.length; i++) {
-            bytes16 executorUuid = executorList[i];
-            collateralPerExecutor[miner][executorUuid] = 0;
-        }
-
-        // Update validator
         validatorOfMiner[miner] = newValidator;
-
-        // Reassign collateral amounts to the new validator
-        collateralUnderPendingReclaims[miner] = pendingCollateral;
-        collaterals[miner] = totalCollateral;
-        for (uint256 i = 0; i < executorList.length; i++) {
-            bytes16 executorUuid = executorList[i];
-            uint256 executorCollateral = collateralPerExecutor[miner][executorUuid];
-            collateralPerExecutor[miner][executorUuid] = executorCollateral;
-        }
     }
 
     /// @notice Returns a list of executors for a specific miner that have more than 0 TAO in collateral

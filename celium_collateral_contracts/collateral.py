@@ -19,7 +19,7 @@ with open('artifacts/contracts/Collateral.sol/Collateral.json', 'r') as f:
     artifact = json.load(f)
 abi = artifact['abi']
 
-contract_address = "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82"
+contract_address = "0x172076E0166D1F9Cc711C77Adf8488051744980C"
 contract = w3.eth.contract(address=contract_address, abi=abi)
 
 # Check if contract is deployed
@@ -138,7 +138,6 @@ if __name__ == "__main__":
         balance = w3.eth.get_balance(miner_address)
         print("Miner Balance:", w3.from_wei(balance, 'ether'))
 
-        # Deposit example
         deposit_collateral(validator_address, uuid_to_bytes16(executor_uuid), Web3.to_wei(1, 'ether'))
 
         try:
@@ -154,15 +153,15 @@ if __name__ == "__main__":
         map_hotkey_to_eth_address(hotkey, private_key)
 
         # Call get_eth_address_from_hotkey
-        # try:
-        #     hotkey = "5CdjQSjNefhzH71jmekdYDcM9NJm48Rdbx1cQhemfmdb4UQg"
-        #     eth_address = get_eth_address_from_hotkey(w3, contract_address, hotkey)
-        #     if eth_address == "0x0000000000000000000000000000000000000000":
-        #         print(f"No Ethereum address mapped to hotkey {hotkey}.")
-        #     else:
-        #         print(f"Ethereum address for hotkey {hotkey}: {eth_address}")
-        # except Exception as e:
-        #     print(f"Error retrieving Ethereum address for hotkey: {e}")
+        try:
+            hotkey = "5CdjQSjNefhzH71jmekdYDcM9NJm48Rdbx1cQhemfmdb4UQg"
+            eth_address = get_eth_address_from_hotkey(w3, contract_address, hotkey)
+            if eth_address == "0x0000000000000000000000000000000000000000":
+                print(f"No Ethereum address mapped to hotkey {hotkey}.")
+            else:
+                print(f"Ethereum address for hotkey {hotkey}: {eth_address}")
+        except Exception as e:
+            print(f"Error retrieving Ethereum address for hotkey: {e}")
 
 
         try:
@@ -177,6 +176,20 @@ if __name__ == "__main__":
             miner_address = w3.eth.accounts[0]
             print("Miner address:", miner_address)
             new_validator_address = "0x9FBDa871d559710256a2502A2517b794B482Db40"  # Example new validator address
-            receipt = update_validator_for_miner(miner_address, validator_address)
+            receipt = update_validator_for_miner(miner_address, new_validator_address)
         except Exception as e:
             print(f"Error in updating validator: {e}")
+
+        try:
+            miner_address = w3.eth.default_account
+            get_validator_from_miner(miner_address)
+        except Exception as e:
+            print(f"Error in getting validator of miner: {e}")
+
+        try:
+            collateral = contract.functions.collaterals(miner_address).call()
+            print("Collateral for miner:", Web3.from_wei(collateral, 'ether'), "ETH")
+            get_eligible_executors(miner_address)
+        except Exception as e:
+            print("Error calling contract function:", e)
+
