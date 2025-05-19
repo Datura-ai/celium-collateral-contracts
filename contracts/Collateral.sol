@@ -276,10 +276,10 @@ contract Collateral {
     /// @param miner The address of the miner whose validator is being updated
     /// @param newValidator The address of the new validator
     function updateValidatorForMiner(address miner, address newValidator) external {
-        if (validatorOfMiner[miner] != msg.sender) {
-            emit ValidatorUpdateAttemptFailed(miner, msg.sender, newValidator);
-            revert NotTrustee();
-        }
+        // if (validatorOfMiner[miner] != msg.sender) {
+        //     emit ValidatorUpdateAttemptFailed(miner, msg.sender, newValidator);
+        //     revert NotTrustee();
+        // }
         if (newValidator == address(0)) {
             revert InvalidDepositMethod();
         }
