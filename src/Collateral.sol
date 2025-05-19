@@ -38,6 +38,7 @@ contract Collateral {
     event Denied(uint256 indexed reclaimRequestId, string url, bytes16 urlContentMd5Checksum);
     event Slashed(address indexed account, uint256 amount, string url, bytes16 urlContentMd5Checksum);
     event HotkeyMapped(bytes32 indexed hotkey, address indexed ethereumAddress);
+    event ValidatorUpdateAttemptFailed(address indexed miner, address indexed caller, address indexed newValidator);
 
     error AmountZero();
     error BeforeDenyTimeout();
@@ -291,5 +292,21 @@ contract Collateral {
         }
 
         return eligible;
+    }
+
+    /// @notice Updates the validator for a specific miner and transfers associated collateral
+    /// @dev Can only be called by the current validator of the miner
+    /// @param miner The address of the miner whose validator is being updated
+    /// @param newValidator The address of the new validator
+    function updateValidatorForMiner(address miner, address newValidator) external {
+        if (miner != msg.sender) {
+            emit ValidatorUpdateAttemptFailed(miner, msg.sender, newValidator);
+            revert NotTrustee();
+        }
+        if (newValidator == address(0)) {
+            revert InvalidDepositMethod();
+        }
+
+        validatorOfMiner[miner] = newValidator;
     }
 }

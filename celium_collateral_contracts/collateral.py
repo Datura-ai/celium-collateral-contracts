@@ -4,6 +4,8 @@ import uuid
 from map_hotkey_to_ethereum import map_hotkey_to_ethereum
 from eth_account import Account
 from get_eth_address_from_hotkey import get_eth_address_from_hotkey
+from get_validator_of_miner import get_validator_of_miner
+from update_validator_for_miner import update_validator_for_miner
 
 def uuid_to_bytes16(uuid_str):
     u = uuid.UUID(uuid_str)
@@ -19,7 +21,7 @@ with open('artifacts/contracts/Collateral.sol/Collateral.json', 'r') as f:
     artifact = json.load(f)
 abi = artifact['abi']
 
-contract_address = "0x172076E0166D1F9Cc711C77Adf8488051744980C"
+contract_address = "0xc0F115A19107322cFBf1cDBC7ea011C19EbDB4F8"
 contract = w3.eth.contract(address=contract_address, abi=abi)
 
 # Check if contract is deployed
@@ -68,20 +70,20 @@ def get_eligible_executors(miner):
     print("Eligible executors:", executors)
 
 # Get miner from validator
-def get_validator_from_miner(validator):
+def get_validator_from_miner(miner_address):
     """
-    Retrieves the miner associated with a specific validator.
+    Retrieves the validator associated with a specific miner.
     """
     try:
-        miner = contract.functions.validatorOfMiner(validator).call()
-        print("Miner associated with validator:", miner)
-        if miner == "0x0000000000000000000000000000000000000000":
-            print(f"No miner is associated with validator {validator}.")
+        validator = get_validator_of_miner(w3, contract_address, miner_address)
+        print("Validator associated with miner:", validator)
+        if validator == "0x0000000000000000000000000000000000000000":
+            print(f"No validator is associated with miner {miner_address}.")
         else:
-            print(f"Miner associated with validator {validator}: {miner}")
-        return miner
+            print(f"Validator associated with miner {miner_address}: {validator}")
+        return validator
     except Exception as e:
-        print(f"Error retrieving miner for validator {validator}: {e}")
+        print(f"Error retrieving validator for miner {miner_address}: {e}")
         return None
 
 # Map hotkey to Ethereum address
@@ -98,20 +100,15 @@ def map_hotkey_to_eth_address(hotkey, private_key):
         print(f"Error mapping hotkey to Ethereum address: {e}")
 
 # Update validator for a miner
-def update_validator_for_miner(miner, new_validator):
+def update_validator_of_miner(miner_address, new_validator):
     """
     Updates the validator for a specific miner.
     """
     try:
-        new_validator = Web3.to_checksum_address(new_validator)  # Convert to checksum address
-        tx = contract.functions.updateValidatorForMiner(miner, new_validator).transact()
-        receipt = w3.eth.wait_for_transaction_receipt(tx)
+        receipt = update_validator_for_miner(w3, sender_account, contract_address, miner_address, new_validator)
         print("Update validator transaction receipt:", receipt)
     except Exception as e:
-        if "NotTrustee" in str(e):
-            print(f"Error: Caller is not the current validator for miner {miner}. Ensure the caller is the assigned validator.")
-        else:
-            print(f"Error updating validator for miner {miner}: {e}")
+        print(f"Error updating validator for miner {miner_address}: {e}")
 
 # Example usage
 if __name__ == "__main__":
@@ -176,7 +173,7 @@ if __name__ == "__main__":
             miner_address = w3.eth.accounts[0]
             print("Miner address:", miner_address)
             new_validator_address = "0x9FBDa871d559710256a2502A2517b794B482Db40"  # Example new validator address
-            receipt = update_validator_for_miner(miner_address, new_validator_address)
+            receipt = update_validator_of_miner(miner_address, new_validator_address)
         except Exception as e:
             print(f"Error in updating validator: {e}")
 
