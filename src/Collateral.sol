@@ -261,7 +261,7 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert InsufficientAmount();
         }
 
-        if (collateralPerExecutor[msg.sender][executorUuid] < amount) {
+        if (collateralPerExecutor[miner][executorUuid] < amount) {
             revert SlashAmountTooLarge(); // or define a new error for executor-specific limits
         }
 
