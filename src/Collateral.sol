@@ -6,49 +6,52 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    uint16 public NETUID;
-    address public TRUSTEE;
-    uint64 public DECISION_TIMEOUT;
-    uint256 public MIN_COLLATERAL_INCREASE;
+    uint16 public immutable NETUID;
+    address public immutable TRUSTEE;
+    uint64 public immutable DECISION_TIMEOUT;
+    uint256 public immutable MIN_COLLATERAL_INCREASE;
 
+    mapping(bytes32 => address) public executorToMiner;
+    mapping(bytes32 => uint256) public collaterals;
     mapping(uint256 => Reclaim) public reclaims;
-    mapping(address => uint256) public collaterals;
-    mapping(address => uint256) private collateralUnderPendingReclaims;
-    mapping(address => mapping(bytes16 => uint256)) public collateralPerExecutor;
-    mapping(address => bytes16[]) private knownExecutorUuids;
+
+    mapping(bytes32 => uint256) private collateralUnderPendingReclaims;
     uint256 private nextReclaimId;
 
     struct Reclaim {
-        uint256 id;
+        bytes32 executorId;
         address miner;
         uint256 amount;
-        uint256 denyTimeout;
-        bytes16 executorUuid;
+        uint64 denyTimeout;
     }
 
-    event Deposit(address indexed account, uint256 amount);
+    event Deposit(bytes32 indexed executorId, address indexed miner, uint256 amount);
     event ReclaimProcessStarted(
         uint256 indexed reclaimRequestId,
-        address indexed account,
+        bytes32 indexed executorId,
+        address indexed miner,
         uint256 amount,
         uint64 expirationTime,
         string url,
         bytes16 urlContentMd5Checksum
     );
-    event Reclaimed(uint256 indexed reclaimRequestId, address indexed account, uint256 amount);
+    event Reclaimed(uint256 indexed reclaimRequestId, bytes32 indexed executorId, address indexed miner, uint256 amount);
     event Denied(uint256 indexed reclaimRequestId, string url, bytes16 urlContentMd5Checksum);
-    event Slashed(address indexed account, uint256 amount, string url, bytes16 urlContentMd5Checksum);
-    event ValidatorUpdateAttemptFailed(address indexed miner, address indexed caller, address indexed newValidator);
+    event Slashed(
+        bytes32 indexed executorId,
+        address indexed miner,
+        uint256 amount,
+        string url,
+        bytes16 urlContentMd5Checksum
+    );
 
     error AmountZero();
     error BeforeDenyTimeout();
+    error ExecutorNotOwned();
     error InsufficientAmount();
     error InvalidDepositMethod();
     error NotTrustee();
     error PastDenyTimeout();
-    error ReclaimAmountTooLarge();
-    error ReclaimAmountTooSmall();
-    error SlashAmountTooLarge();
     error ReclaimNotFound();
     error TransferFailed();
 
@@ -56,14 +59,14 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @param netuid The netuid of the subnet
     /// @param trustee H160 address of the trustee who has permissions to slash collateral or deny reclaim requests
     /// @param minCollateralIncrease The minimum amount that can be deposited or reclaimed
-    /// @param decisionTimeout The time window (in seconds) for the validator to deny a reclaim request
+    /// @param decisionTimeout The time window (in seconds) for the trustee to deny a reclaim request
     /// @dev Reverts if any of the arguments is zero
-    function initialize(uint16 netuid, address trustee, uint256 minCollateralIncrease, uint64 decisionTimeout) public initializer {
+    constructor(uint16 netuid, address trustee, uint256 minCollateralIncrease, uint64 decisionTimeout) {
+        // custom errors are not used here because it's a 1-time setup
         require(trustee != address(0), "Trustee address must be non-zero");
         require(minCollateralIncrease > 0, "Min collateral increase must be greater than 0");
         require(decisionTimeout > 0, "Decision timeout must be greater than 0");
-        __Ownable_init(msg.sender);
-        __UUPSUpgradeable_init();
+
         NETUID = netuid;
         TRUSTEE = trustee;
         MIN_COLLATERAL_INCREASE = minCollateralIncrease;
@@ -77,8 +80,6 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
     // Allow deposits only via deposit() function
     receive() external payable {
         revert InvalidDepositMethod();
@@ -89,72 +90,56 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         revert InvalidDepositMethod();
     }
 
-    /// @notice Allows users to deposit collateral into the contract
+    /// @notice Allows users to deposit collateral into the contract for a specific executor
+    /// @param executorId The ID of the executor to deposit collateral for
+    /// @dev The first deposit for an executorId sets the owner. Subsequent deposits must be from the owner.
     /// @dev The deposited amount must be greater than or equal to MIN_COLLATERAL_INCREASE
     /// @dev If it's not revert with InsufficientAmount error
-    /// @dev Emits a Deposit event with the sender's address and deposited amount
-    function deposit(bytes16 executorUuid) external payable {
+    /// @dev Emits a Deposit event with the executorId, sender's address and deposited amount
+    function deposit(bytes32 executorId) external payable {
         if (msg.value < MIN_COLLATERAL_INCREASE) {
             revert InsufficientAmount();
         }
-        if (executorUuid == bytes16(0)) {
-            revert InvalidDepositMethod();
+
+        address owner = executorToMiner[executorId];
+        if (owner == address(0)) {
+            executorToMiner[executorId] = msg.sender;
+        } else if (owner != msg.sender) {
+            revert ExecutorNotOwned();
         }
 
-        collaterals[msg.sender] += msg.value;
-
-        if (collateralPerExecutor[msg.sender][executorUuid] == 0) {
-            knownExecutorUuids[msg.sender].push(executorUuid);
-        }
-        
-        collateralPerExecutor[msg.sender][executorUuid] += msg.value;
-
-        emit Deposit(msg.sender, msg.value);
+        collaterals[executorId] += msg.value;
+        emit Deposit(executorId, msg.sender, msg.value);
     }
-    
-    /// @notice Initiates a process to reclaim message sender's collateral from the contract
-    /// @dev If it's not denied by the validator, the collateral will be available for withdrawal after DECISION_TIMEOUT
-    /// @dev The amount reclaimed must be greater than 0
-    /// @dev The amount reclaimed must be greater than or equal to MIN_COLLATERAL_INCREASE untless it's a full collateral withdrawal
-    /// @dev The total amount under pending reclaims cannot exceed the user's total collateral
-    /// @param amount The amount of collateral to reclaim
+
+    /// @notice Initiates a process to reclaim all available collateral from a specific executor
+    /// @dev If it's not denied by the trustee, the collateral will be available for withdrawal after DECISION_TIMEOUT
+    /// @param executorId The ID of the executor to reclaim collateral from
     /// @param url URL containing information about the reclaim request
     /// @param urlContentMd5Checksum MD5 checksum of the content at the provided URL
     /// @dev Emits ReclaimProcessStarted event with reclaim details and timeout
-    /// @dev Reverts with ReclaimAmountTooSmall if amount is 0 or doesn't meet minimum requirements
-    /// @dev Reverts with ReclaimAmountTooLarge if there's insufficient collateral available
-    function reclaimCollateral(uint256 amount, string calldata url, bytes16 urlContentMd5Checksum, bytes16 executorUuid) external {
+    /// @dev Reverts with ExecutorNotOwned if caller is not the owner of the executor
+    /// @dev Reverts with AmountZero if there is no available collateral to reclaim
+    function reclaimCollateral(bytes32 executorId, string calldata url, bytes16 urlContentMd5Checksum)
+        external
+    {
+        if (executorToMiner[executorId] != msg.sender) {
+            revert ExecutorNotOwned();
+        }
+
+        uint256 collateral = collaterals[executorId];
+        uint256 pendingCollateral = collateralUnderPendingReclaims[executorId];
+        uint256 amount = collateral - pendingCollateral;
+
         if (amount == 0) {
             revert AmountZero();
         }
 
-        if (collateralPerExecutor[msg.sender][executorUuid] < amount) {
-            revert ReclaimAmountTooLarge(); // or define a new error for executor-specific limits
-        }
-
-        uint256 collateral = collaterals[msg.sender];
-        uint256 pendingCollateral = collateralUnderPendingReclaims[msg.sender];
-        uint256 collateralAvailableForReclaim = collateral - pendingCollateral;
-        if (pendingCollateral + amount > collateral) {
-            revert ReclaimAmountTooLarge();
-        }
-        if (amount < MIN_COLLATERAL_INCREASE && collateralAvailableForReclaim != amount) {
-            revert ReclaimAmountTooSmall();
-        }
-
         uint64 expirationTime = uint64(block.timestamp) + DECISION_TIMEOUT;
+        reclaims[++nextReclaimId] = Reclaim(executorId, msg.sender, amount, expirationTime);
+        collateralUnderPendingReclaims[executorId] += amount;
 
-        collateralUnderPendingReclaims[msg.sender] += amount;
-
-        uint256 reclaimId = ++nextReclaimId;
-        Reclaim storage r = reclaims[reclaimId];
-        r.miner = msg.sender;
-        r.amount = amount;
-        r.denyTimeout = expirationTime;
-        r.executorUuid = executorUuid;
-        r.id = reclaimId;
-
-        emit ReclaimProcessStarted(reclaimId, msg.sender, amount, expirationTime, url, urlContentMd5Checksum);
+        emit ReclaimProcessStarted(nextReclaimId, executorId, msg.sender, amount, expirationTime, url, urlContentMd5Checksum);
     }
 
     /// @notice Finalizes a reclaim request and transfers the collateral to the depositor if conditions are met
@@ -167,7 +152,7 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev Reverts with BeforeDenyTimeout if the deny timeout hasn't expired
     /// @dev Reverts with TransferFailed if the TAO transfer fails
     function finalizeReclaim(uint256 reclaimRequestId) external {
-        Reclaim memory reclaim = reclaims[reclaimRequestId];
+        Reclaim storage reclaim = reclaims[reclaimRequestId];
         if (reclaim.amount == 0) {
             revert ReclaimNotFound();
         }
@@ -175,184 +160,86 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert BeforeDenyTimeout();
         }
 
-        // Delete reclaim and update pending reclamation amount unconditionally
-        delete reclaims[reclaimRequestId];
-        collateralUnderPendingReclaims[reclaim.miner] -= reclaim.amount;
-        // Only if the miner still has enough collateral do we process the withdrawal
-        if (collaterals[reclaim.miner] >= reclaim.amount) {
-            collateralPerExecutor[reclaim.miner][reclaim.executorUuid] -= reclaim.amount;
-            collaterals[reclaim.miner] -= reclaim.amount;
-            emit Reclaimed(reclaimRequestId, reclaim.miner, reclaim.amount);
-            (bool success,) = payable(reclaim.miner).call{value: reclaim.amount}("");
-            if (!success) {
-                revert TransferFailed();
-            }
+        bytes32 executorId = reclaim.executorId;
+        address miner = reclaim.miner;
+        uint256 amount = reclaim.amount;
 
-            // If collateral for this executor is now zero, remove it from knownExecutorUuids
-            if (collateralPerExecutor[reclaim.miner][reclaim.executorUuid] == 0) {
-                bytes16[] storage minerExecutors = knownExecutorUuids[reclaim.miner];
-                for (uint i = 0; i < minerExecutors.length; i++) {
-                    if (minerExecutors[i] == reclaim.executorUuid) {
-                        // Swap with the last element and shrink the array
-                        minerExecutors[i] = minerExecutors[minerExecutors.length - 1];
-                        minerExecutors.pop();
-                        break; // Found and removed, exit loop
-                    }
-                }
-            }
+        delete reclaims[reclaimRequestId];
+        collateralUnderPendingReclaims[executorId] -= amount;
+
+        if (collaterals[executorId] < amount) {
+            // miner got slashed and can't withdraw
+            return;
         }
-        // Otherwise miner got slashed: reclaim request is deleted without transferring funds
+
+        collaterals[executorId] -= amount;
+
+        emit Reclaimed(reclaimRequestId, executorId, miner, amount);
+
+        // check-effect-interact pattern used to prevent reentrancy attacks
+        (bool success,) = payable(miner).call{value: amount}("");
+        if (!success) {
+            revert TransferFailed();
+        }
     }
 
-    /// @notice Allows the validator to deny a pending reclaim request before the timeout expires
-    /// @dev Can only be called by the assigned validator
+    /// @notice Allows the trustee to deny a pending reclaim request before the timeout expires
+    /// @dev Can only be called by the trustee (address set in constructor)
     /// @dev Must be called before the deny timeout expires
+    /// @dev Removes the reclaim request and frees up the collateral for other reclaims
     /// @param reclaimRequestId The ID of the reclaim request to deny
     /// @param url URL containing the reason of denial
     /// @param urlContentMd5Checksum MD5 checksum of the content at the provided URL
     /// @dev Emits Denied event with the reclaim request ID
+    /// @dev Reverts with NotTrustee if called by non-trustee address
     /// @dev Reverts with ReclaimNotFound if the reclaim request doesn't exist
     /// @dev Reverts with PastDenyTimeout if the timeout has already expired
     function denyReclaimRequest(uint256 reclaimRequestId, string calldata url, bytes16 urlContentMd5Checksum)
         external
         onlyTrustee
     {
-        Reclaim memory reclaim = reclaims[reclaimRequestId];
+        Reclaim storage reclaim = reclaims[reclaimRequestId];
         if (reclaim.amount == 0) {
             revert ReclaimNotFound();
         }
-
         if (reclaim.denyTimeout < block.timestamp) {
             revert PastDenyTimeout();
         }
-      
-        collateralUnderPendingReclaims[reclaim.miner] -= reclaim.amount;
+
+        collateralUnderPendingReclaims[reclaim.executorId] -= reclaim.amount;
         emit Denied(reclaimRequestId, url, urlContentMd5Checksum);
 
         delete reclaims[reclaimRequestId];
     }
 
-    /// @notice Allows the validator to slash a miner's collateral
-    /// @dev Can only be called by the assigned validator
-    /// @param miner The address of the miner to slash
+    /// @notice Allows the trustee to slash a miner's collateral for a specific executor
+    /// @dev Can only be called by the trustee (address set in constructor)
+    /// @dev Removes the collateral from the executor and burns it
+    /// @param executorId The ID of the executor to slash
     /// @param amount The amount of collateral to slash, must be greater than 0
-    /// @param url URL containing the reason for slashing
-    /// @param urlContentMd5Checksum MD5 checksum of the content at the provided URL
-    /// @param executorUuid The UUID of the executor associated with the slashed collateral
-    /// @dev Emits Slashed event with the miner's address and the amount slashed
+    /// @dev Emits Slashed event with the executor's ID, miner's address and the amount slashed
     /// @dev Reverts with AmountZero if amount is 0
-    /// @dev Reverts with InsufficientAmount if the miner has less collateral than the amount to slash
+    /// @dev Reverts with InsufficientAmount if the executor has less collateral than the amount to slash
     /// @dev Reverts with TransferFailed if the TAO transfer fails
-    function slashCollateral(address miner, uint256 amount, string calldata url, bytes16 urlContentMd5Checksum, bytes16 executorUuid)
+    function slashCollateral(bytes32 executorId, uint256 amount, string calldata url, bytes16 urlContentMd5Checksum)
         external
         onlyTrustee
     {
         if (amount == 0) {
             revert AmountZero();
         }
-        if (collaterals[miner] < amount) {
+        if (collaterals[executorId] < amount) {
             revert InsufficientAmount();
         }
+        collaterals[executorId] -= amount;
+        address miner = executorToMiner[executorId];
 
-        if (collateralPerExecutor[miner][executorUuid] < amount) {
-            revert SlashAmountTooLarge();
-        }
-        
-        collaterals[miner] -= amount;
         // burn the collateral
         (bool success,) = payable(address(0)).call{value: amount}("");
         if (!success) {
             revert TransferFailed();
         }
 
-        collateralPerExecutor[miner][executorUuid] -= amount;
-
-        emit Slashed(miner, amount, url, urlContentMd5Checksum);
-    }
-
-   /// @notice Returns a list of executors for a specific miner that have more than 0 TAO in collateral
-    /// @dev This function checks the `collateralPerExecutor` mapping for the specified miner's executors.
-    /// @param miner The address of the miner for whom the executors are to be fetched.
-    /// @return A dynamic array of `bytes16` UUIDs representing executors with more than 0 TAO in collateral for the specified miner.
-    /// @notice Returns a list of eligible executors for a specific miner that have more than 0 TAO in collateral and have not been slashed or penalized.
-    function getEligibleExecutors(address miner) external view returns (bytes16[] memory) {
-        bytes16[] memory allExecutors = knownExecutorUuids[miner];
-        uint256 count = 0;
-
-        // First pass to count
-        for (uint256 i = 0; i < allExecutors.length; i++) {
-            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
-                count++;
-            }
-        }
-
-        // Second pass to collect
-        bytes16[] memory eligible = new bytes16[](count);
-        uint256 index = 0;
-        for (uint256 i = 0; i < allExecutors.length; i++) {
-            if (collateralPerExecutor[miner][allExecutors[i]] > 0) {
-                eligible[index++] = allExecutors[i];
-            }
-        }
-
-        return eligible;
-    }
-
-    /// @notice Returns the next available reclaim request ID.
-    /// @return The next reclaim request ID.
-    function getNextReclaimId() external view returns (uint256) {
-        return nextReclaimId;
-    }
-
-    /// @notice Returns a list of active reclaim requests (amount > 0).
-    /// @return A dynamic array of Reclaim structs.
-    function getReclaims() external view returns (Reclaim[] memory) {
-        uint256 totalReclaims = nextReclaimId;
-        uint256 eligibleCount = 0;
-
-        // First pass to count the number of eligible reclaims
-        for (uint256 i = 1; i <= totalReclaims; i++) {
-            if (reclaims[i].amount > 0) {
-                eligibleCount++;
-            }
-        }
-
-        // Create an array of the exact size needed
-        Reclaim[] memory eligibleReclaims = new Reclaim[](eligibleCount);
-        uint256 currentIndex = 0;
-        for (uint256 i = 1; i <= totalReclaims; i++) {
-            if (reclaims[i].amount > 0) {
-                eligibleReclaims[currentIndex] = reclaims[i];
-                currentIndex++;
-            }
-        }
-
-        return eligibleReclaims;
-    }
-
-    /// @notice Returns all reclaim requests for a specific miner.
-    /// @param miner The address of the miner.
-    /// @return An array of Reclaim structs belonging to the miner.
-    function getReclaimsOfMiner(address miner) external view returns (Reclaim[] memory) {
-        uint256 totalReclaims = nextReclaimId;
-        uint256 count = 0;
-
-        // First pass: count reclaims belonging to the miner
-        for (uint256 i = 1; i <= totalReclaims; i++) {
-            if (reclaims[i].amount > 0 && reclaims[i].miner == miner) {
-                count++;
-            }
-        }
-
-        // Second pass: collect reclaims
-        Reclaim[] memory minerReclaims = new Reclaim[](count);
-        uint256 idx = 0;
-        for (uint256 i = 1; i <= totalReclaims; i++) {
-            if (reclaims[i].amount > 0 && reclaims[i].miner == miner) {
-                minerReclaims[idx++] = reclaims[i];
-            }
-        }
-
-        return minerReclaims;
+        emit Slashed(executorId, miner, amount, url, urlContentMd5Checksum);
     }
 }
