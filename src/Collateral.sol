@@ -212,26 +212,24 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         delete reclaims[reclaimRequestId];
     }
 
-    /// @notice Allows the trustee to slash a miner's collateral for a specific executor
+    /// @notice Allows the trustee to slash all of a miner's collateral for a specific executor
     /// @dev Can only be called by the trustee (address set in constructor)
-    /// @dev Removes the collateral from the executor and burns it
+    /// @dev Slashes all collateral of an executor and burns it
     /// @param executorId The ID of the executor to slash
-    /// @param amount The amount of collateral to slash, must be greater than 0
+    /// @param url URL containing the reason of slashing
+    /// @param urlContentMd5Checksum MD5 checksum of the content at the provided URL
     /// @dev Emits Slashed event with the executor's ID, miner's address and the amount slashed
-    /// @dev Reverts with AmountZero if amount is 0
-    /// @dev Reverts with InsufficientAmount if the executor has less collateral than the amount to slash
+    /// @dev Reverts with AmountZero if the executor has no collateral to slash
     /// @dev Reverts with TransferFailed if the TAO transfer fails
-    function slashCollateral(bytes32 executorId, uint256 amount, string calldata url, bytes16 urlContentMd5Checksum)
+    function slashCollateral(bytes32 executorId, string calldata url, bytes16 urlContentMd5Checksum)
         external
         onlyTrustee
     {
+        uint256 amount = collaterals[executorId];
         if (amount == 0) {
             revert AmountZero();
         }
-        if (collaterals[executorId] < amount) {
-            revert InsufficientAmount();
-        }
-        collaterals[executorId] -= amount;
+        collaterals[executorId] = 0;
         address miner = executorToMiner[executorId];
 
         // burn the collateral
