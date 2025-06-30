@@ -16,6 +16,8 @@ node_modules/
 __pycache__
 
 dist/
+.venv/
+build/
 deployments.json
 .*_profile
 build/
