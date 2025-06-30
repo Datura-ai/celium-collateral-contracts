@@ -17,3 +17,5 @@ __pycache__
 
 dist/
 deployments.json
+.*_profile
+build/
