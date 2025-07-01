@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+
+contract Collateral {
     uint16 public NETUID;
     address public TRUSTEE;
     uint64 public DECISION_TIMEOUT;
@@ -63,22 +60,17 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     /// @param minCollateralIncrease The minimum amount that can be deposited or reclaimed
     /// @param decisionTimeout The time window (in seconds) for the trustee to deny a reclaim request
     /// @dev Reverts if any of the arguments is zero
-    function initialize(uint16 netuid, address trustee, uint256 minCollateralIncrease, uint64 decisionTimeout) public initializer {
+    constructor(uint16 netuid, address trustee, uint256 minCollateralIncrease, uint64 decisionTimeout) {
         // custom errors are not used here because it's a 1-time setup
         require(trustee != address(0), "Trustee address must be non-zero");
         require(minCollateralIncrease > 0, "Min collateral increase must be greater than 0");
         require(decisionTimeout > 0, "Decision timeout must be greater than 0");
 
-        __Ownable_init(msg.sender);
-        __UUPSUpgradeable_init();
-        __ReentrancyGuard_init();
         NETUID = netuid;
         TRUSTEE = trustee;
         MIN_COLLATERAL_INCREASE = minCollateralIncrease;
         DECISION_TIMEOUT = decisionTimeout;
     }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     modifier onlyTrustee() {
         if (msg.sender != TRUSTEE) {
@@ -158,7 +150,7 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     /// @dev Reverts with ReclaimNotFound if the reclaim request doesn't exist or was denied
     /// @dev Reverts with BeforeDenyTimeout if the deny timeout hasn't expired
     /// @dev Reverts with TransferFailed if the TAO transfer fails
-    function finalizeReclaim(uint256 reclaimRequestId) external nonReentrant {
+    function finalizeReclaim(uint256 reclaimRequestId) external {
         Reclaim storage reclaim = reclaims[reclaimRequestId];
         if (reclaim.amount == 0) {
             revert ReclaimNotFound();
@@ -232,7 +224,6 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     function slashCollateral(bytes16 executorId, string calldata url, bytes16 urlContentMd5Checksum)
         external
         onlyTrustee
-        nonReentrant
     {
         uint256 amount = collaterals[executorId];
 
@@ -250,10 +241,5 @@ contract Collateral is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         }
         executorToMiner[executorId] = address(0);
         emit Slashed(executorId, miner, amount, url, urlContentMd5Checksum);
-    }
-
-    function setTrustee(address newTrustee) external onlyOwner {
-        require(newTrustee != address(0), "Trustee address must be non-zero");
-        TRUSTEE = newTrustee;
     }
 }
