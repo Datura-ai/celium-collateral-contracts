@@ -21,3 +21,5 @@ build/
 deployments.json
 .*_profile
 build/
+celium_collateral_contracts.egg-info/
+celium_collateral.egg-info/

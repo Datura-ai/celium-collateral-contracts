@@ -3,13 +3,13 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "celium-collateral-contracts"
-version = "1.0.63"
-description = "Collateral Smart Contract for Bittensor"
+name = "celium-collateral"
+version = "1.1.0"
+description = "Collateral Smart Contract for Celium"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Vitali", email = "vitalishvets20@gmail.com" }
+    { name = "Waris", email = "waris0609@outlook.com" }
 ]
 requires-python = "<3.13,>=3.11"
 classifiers = [
