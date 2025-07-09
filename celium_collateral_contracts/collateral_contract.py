@@ -15,9 +15,16 @@ from celium_collateral_contracts.get_collaterals import get_deposit_events
 from celium_collateral_contracts.get_reclaim_requests import get_reclaim_process_started_events
 
 class CollateralContract:
-    def __init__(self, network: str, contract_address: str, owner_key=None, miner_key=None):
+    def __init__(
+        self,
+        network: str,
+        contract_address: str,
+        rpc_url: str | None = None,
+        owner_key: str | None = None,
+        miner_key: str | None = None,
+    ):
         try:
-            self.w3 = get_web3_connection(network)
+            self.w3 = get_web3_connection(network, rpc_url)
         except Exception as e:
             print(f"Warning: Failed to connect bittensor network. Error: {e}")
 
