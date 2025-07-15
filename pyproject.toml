@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "celium-collateral"
-version = "1.1.0"
+version = "1.1.2"
 description = "Collateral Smart Contract for Celium"
 readme = "README.md"
 license = { file = "LICENSE" }
