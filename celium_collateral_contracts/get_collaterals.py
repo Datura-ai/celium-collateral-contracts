@@ -19,6 +19,8 @@ class DepositEvent:
     """Represents a Deposit event emitted by the Collateral contract."""
 
     account: str
+    miner: str
+    executor_uuid: str
     amount: int
     block_number: int
     transaction_hash: str

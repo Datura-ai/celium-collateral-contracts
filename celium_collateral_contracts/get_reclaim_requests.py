@@ -23,12 +23,21 @@ class ReclaimProcessStartedEvent:
 
     reclaim_request_id: int
     amount: int
-    expiration_time: int
+    expiration_time: str
     url: str
     url_content_md5_checksum: str
     block_number: int
     executor_uuid: str
 
+@dataclass
+class ReclaimRequest:
+    """Represents a Reclaim."""
+
+    reclaim_request_id: int
+    executor_uuid: str
+    miner: str
+    amount: int
+    expiration_time: str
 
 async def get_reclaim_process_started_events(
     w3, contract_address, block_num_low, block_num_high
