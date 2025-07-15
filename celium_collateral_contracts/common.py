@@ -15,14 +15,21 @@ import pathlib
 import sys
 import json
 import hashlib
+import uuid
 
 import bittensor
 import requests
-import web3.providers.auto
-from eth_typing import URI
 from web3 import Web3
+from web3.eth import AsyncEth
+from web3.contract import Contract
 from eth_account import Account
 from web3.exceptions import ContractLogicError
+
+
+def validate_address_format(address):
+    """Validate if the given address is a valid Ethereum address."""
+    if not Web3.is_address(address):
+        raise ValueError("Invalid address")
 
 
 def load_contract_abi():
@@ -48,10 +55,22 @@ def get_web3_connection(network: str, rpc_url: str | None = None) -> Web3:
             network_url = RPC_URLS[network]
         else:
             _, network_url = bittensor.utils.determine_chain_endpoint_and_network(network)
-    w3 = Web3(Web3.HTTPProvider(network_url))
-    if not w3.is_connected():
-        raise ConnectionError("Failed to connect to the network")
+
+    w3 = Web3(
+        Web3.AsyncHTTPProvider(network_url),
+        modules={"eth": (AsyncEth,)},
+        middlewares=[],
+    )
+    # if not w3.is_connected():
+    #     raise ConnectionError("Failed to connect to the network")
     return w3
+
+
+def get_contract(w3: Web3, contract_address: str) -> Contract:
+    validate_address_format(contract_address)
+
+    contract_abi = load_contract_abi()
+    return w3.eth.contract(address=contract_address, abi=contract_abi)
 
 
 def get_account(keystr=None):
@@ -65,13 +84,7 @@ def get_account(keystr=None):
     return Account.from_key(private_key)
 
 
-def validate_address_format(address):
-    """Validate if the given address is a valid Ethereum address."""
-    if not Web3.is_address(address):
-        raise ValueError("Invalid address")
-
-
-def build_and_send_transaction(
+async def build_and_send_transaction(
     w3, function_call, account, gas_limit=100000, value=0
 ):
     """Build, sign and send a transaction.
@@ -83,13 +96,13 @@ def build_and_send_transaction(
         gas_limit: Maximum gas to use for the transaction
         value: Amount of ETH to send with the transaction (in Wei)
     """
-    transaction = function_call.build_transaction(
+    transaction = await function_call.build_transaction(
         {
             "from": account.address,
-            "nonce": w3.eth.get_transaction_count(account.address),
+            "nonce": await w3.eth.get_transaction_count(account.address),
             "gas": gas_limit,
-            "gasPrice": w3.eth.gas_price,
-            "chainId": w3.eth.chain_id,
+            "gasPrice": await w3.eth.gas_price,
+            "chainId": await w3.eth.chain_id,
             "value": value,
         }
     )
@@ -101,14 +114,14 @@ def build_and_send_transaction(
     if raw_tx is None:
         raise AttributeError("Signed transaction has neither 'rawTransaction' nor 'raw_transaction'.")
 
-    tx_hash = w3.eth.send_raw_transaction(raw_tx)
+    tx_hash = await w3.eth.send_raw_transaction(raw_tx)
     print(f"Transaction sent: {tx_hash.hex()}", file=sys.stderr)
     return tx_hash
 
 
-def wait_for_receipt(w3, tx_hash, timeout=300, poll_latency=2):
+async def wait_for_receipt(w3, tx_hash, timeout=300, poll_latency=2):
     """Wait for transaction receipt and return it."""
-    return w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
+    return await w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
 
 
 def calculate_md5_checksum(url):
@@ -128,13 +141,13 @@ def calculate_md5_checksum(url):
     return hashlib.md5(response.content).hexdigest()
 
 
-def get_revert_reason(w3, tx_hash, block_number):
+async def get_revert_reason(w3, tx_hash, block_number):
     """Returns the custom Solidity error name for a failed transaction, or 'Could not parse error' if not decodable.
     If the error is SlashAmountTooLarge, also prints its parameters.
     """
-    tx = w3.eth.get_transaction(tx_hash)
+    tx = await w3.eth.get_transaction(tx_hash)
     try:
-        w3.eth.call({
+        await w3.eth.call({
             'to': tx['to'],
             'from': tx['from'],
             'data': tx['input'],
@@ -162,35 +175,8 @@ def get_revert_reason(w3, tx_hash, block_number):
     return "Could not parse error"
 
 
-async def get_evm_key_associations(
-    subtensor: bittensor.Subtensor, netuid: int, block: int | None = None
-) -> dict[int, str]:
-    """
-    Retrieve all EVM key associations for a specific subnet.
-
-    Arguments:
-        subtensor (bittensor.Subtensor): The Subtensor object to use for querying the network.
-        netuid (int): The NetUID for which to retrieve EVM key associations.
-        block (int | None, optional): The block number to query. Defaults to None, which queries the latest block.
-
-    Returns:
-        dict: A dictionary mapping UIDs (int) to their associated EVM key addresses (str).
-    """
-    associations = await subtensor.query_map_subtensor(
-        "AssociatedEvmAddress", block=block, params=[netuid]
-    )
-    uid_evm_address_map = {}
-    for uid, scale_obj in associations:
-        evm_address_raw, block = scale_obj.value
-        evm_address = "0x" + bytes(evm_address_raw[0]).hex()
-        uid_evm_address_map[uid] = evm_address
-    return uid_evm_address_map
-
-
-def get_executor_collateral(w3, contract_address, executor_uuid):
+async def get_executor_collateral(w3: Web3, contract: Contract, executor_uuid: uuid.UUID | str):
     """Query the collateral amount for a given miner and executor UUID."""
-    contract_abi = load_contract_abi()
-    contract = w3.eth.contract(address=contract_address, abi=contract_abi)
     # executor_uuid must be bytes16
     if isinstance(executor_uuid, str):
         import uuid
@@ -204,13 +190,12 @@ def get_executor_collateral(w3, contract_address, executor_uuid):
         uuid_bytes = uuid_bytes[:16] if len(uuid_bytes) > 16 else uuid_bytes.ljust(16, b'\0')
     else:
         uuid_bytes = executor_uuid
-    executor_collateral =  contract.functions.collaterals(uuid_bytes).call()
+    executor_collateral = await contract.functions.collaterals(uuid_bytes).call()
     return w3.from_wei(executor_collateral, "ether")
 
-def get_miner_address_of_executor(w3, contract_address, executor_uuid):
+
+async def get_miner_address_of_executor(contract: Contract, executor_uuid: uuid.UUID | str):
     """Query the collateral amount for a given miner and executor UUID."""
-    contract_abi = load_contract_abi()
-    contract = w3.eth.contract(address=contract_address, abi=contract_abi)
     # executor_uuid must be bytes16
     if isinstance(executor_uuid, str):
         import uuid
@@ -224,5 +209,5 @@ def get_miner_address_of_executor(w3, contract_address, executor_uuid):
         uuid_bytes = uuid_bytes[:16] if len(uuid_bytes) > 16 else uuid_bytes.ljust(16, b'\0')
     else:
         uuid_bytes = executor_uuid
-    miner_address = contract.functions.executorToMiner(uuid_bytes).call()
+    miner_address = await contract.functions.executorToMiner(uuid_bytes).call()
     return miner_address

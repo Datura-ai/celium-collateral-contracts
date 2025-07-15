@@ -2,7 +2,7 @@ import argparse
 import bittensor
 import sys
 
-from celium_collateral_contracts.common import get_evm_key_associations
+from celium_collateral_contracts.subtensor import get_evm_key_associations
 
 
 def main() -> None:
