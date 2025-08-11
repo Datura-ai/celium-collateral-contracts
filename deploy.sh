@@ -6,24 +6,27 @@
 #   export DEPLOYER_PRIVATE_KEY="your-private-key"
 #
 # Then run the script:
-#   ./deploy.sh 1 0x742d35Cc6634C0532925a3b844Bc454e4438f44e 1000000000000000000 3600
+#   ./deploy.sh 1 0x7bbC2b50B3A10446d1132B88f50FDA964D060A58 0x20b0edb3e096d059b115c51045bfb96de644f747 10000000000000000 3600
 #
 # Arguments explanation:
 # 1. netuid: Identifier of the subnet (uint16)
 #    Example: 1
 #
 # 2. trustee_h160_address: Ethereum address of the trustee (H160 format)
-#    Example: 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+#    Example: 0x742d35Cc6634C0532925a3b844Bc454e4438f44e/
 #
-# 3. min_collateral_increase_u256: Minimum amount for deposits/reclaims in wei
+# 3. burn_h160_address: Ethereum address of the burn address (H160 format)
+#    Example: 0x20b0edb3e096d059b115c51045bfb96de644f747
+#
+# 4. min_collateral_increase_u256: Minimum amount for deposits/reclaims in wei
 #    Example: 1000000000000000000 (= 1 TAO in wei)
 #
-# 4. deny_timeout_u64: Time window in seconds for trustee to deny reclaim requests
+# 5. deny_timeout_u64: Time window in seconds for trustee to deny reclaim requests
 #    Example: 3600 (= 1 hour in seconds)
 #
 
 # Check if all required arguments are provided
-if [ "$#" -ne 4 ]; then
+if [ "$#" -ne 5 ]; then
     echo "Error: Required arguments missing"
     echo "Usage: $0 <netuid_u16> <trustee_h160_address> <min_collateral_increase_u256> <deny_timeout_u64>"
     exit 1
@@ -32,8 +35,9 @@ fi
 # Assign command line arguments to variables
 NETUID=$1
 TRUSTEE_ADDRESS=$2
-MIN_COLLATERAL_INCREASE=$3
-DENY_TIMEOUT=$4
+BURN_ADDRESS=$3
+MIN_COLLATERAL_INCREASE=$4
+DENY_TIMEOUT=$5
 
 # Check if environment variables are set
 if [ -z "$RPC_URL" ]; then
@@ -63,4 +67,4 @@ forge create src/Collateral.sol:Collateral \
     --broadcast \
     --rpc-url "$RPC_URL" \
     --private-key "$DEPLOYER_PRIVATE_KEY" \
-    --constructor-args "$NETUID" "$TRUSTEE_ADDRESS" "$MIN_COLLATERAL_INCREASE" "$DENY_TIMEOUT"
+    --constructor-args "$NETUID" "$TRUSTEE_ADDRESS" "$BURN_ADDRESS" "$MIN_COLLATERAL_INCREASE" "$DENY_TIMEOUT"
