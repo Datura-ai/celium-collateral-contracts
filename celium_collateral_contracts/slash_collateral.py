@@ -33,8 +33,9 @@ async def slash_collateral(
     w3,
     account,
     contract_address,
-    url,
     executor_uuid,
+    slash_amount_tao,
+    url,
 ):
     """Slash collateral from a miner.
 
@@ -42,8 +43,9 @@ async def slash_collateral(
         w3 (Web3): Web3 instance
         account: The account to use for the transaction
         contract_address (str): Address of the collateral contract
-        url (str): URL containing information about the slash
         executor_uuid (str): Executor UUID for the slashing operation
+        slash_amount_tao (float): Amount to slash in TAO
+        url (str): URL containing information about the slash
 
     Returns:
         dict: Transaction receipt with slash event details
@@ -62,11 +64,13 @@ async def slash_collateral(
         print(f"MD5 checksum: {md5_checksum}", file=sys.stderr)
 
     executor_uuid_bytes = UUID(executor_uuid).bytes
+    slash_amount_wei = w3.to_wei(slash_amount_tao, "ether")
 
     tx_hash = build_and_send_transaction(
         w3,
         contract.functions.slashCollateral(
             executor_uuid_bytes,
+            slash_amount_wei,
             url,
             bytes.fromhex(md5_checksum),
         ),
@@ -93,13 +97,20 @@ async def main():
         help="Address of the collateral contract"
     )
     parser.add_argument(
+        "--executor-uuid",
+        required=True,
+        help="Executor UUID for the slashing operation"
+    )
+    parser.add_argument(
+        "--slash-amount",
+        type=float,
+        required=True,
+        help="Amount to slash in TAO"
+    )
+    parser.add_argument(
         "--url",
         required=True,
         help="URL containing information about the slash"
-    )
-    parser.add_argument(
-        "--executor-uuid",
-        help="Executor UUID for the slashing operation"
     )
     parser.add_argument("--private-key", help="Private key of the account to use")
     parser.add_argument("--network", default="finney", help="The Subtensor Network to connect to.")
@@ -116,8 +127,9 @@ async def main():
             w3,
             account,
             args.contract_address,
-            args.url,
-            args.executor_uuid
+            args.executor_uuid,
+            args.slash_amount,
+            args.url
         )
 
         print(f"Successfully slashed for executor {args.executor_uuid}")

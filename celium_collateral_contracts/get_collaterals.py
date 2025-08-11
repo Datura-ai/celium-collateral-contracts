@@ -44,7 +44,7 @@ async def get_deposit_events(w3, contract_address, block_num_low, block_num_high
 
     checksum_address = w3.to_checksum_address(contract_address)
 
-    event_signature = "Deposit(address,uint256)"
+    event_signature = "Deposit(bytes16,address,uint256)"
     event_topic = w3.keccak(text=event_signature).hex()
 
     filter_params = {
@@ -58,14 +58,17 @@ async def get_deposit_events(w3, contract_address, block_num_low, block_num_high
 
     formatted_events = []
     for log in logs:
-        account_address = "0x" + log["topics"][1].hex()[-40:]
-        account = w3.to_checksum_address(account_address)
+        # Extract miner address from topics[2] (indexed)
+        miner_address = "0x" + log["topics"][2].hex()[-40:]
+        miner = w3.to_checksum_address(miner_address)
 
         decoded_event = contract.events.Deposit().process_log(log)
 
         formatted_events.append(
             DepositEvent(
-                account=account,
+                account=miner,  # For backward compatibility, use miner as account
+                miner=miner,
+                executor_uuid=decoded_event['args']['executorId'].hex(),
                 amount=decoded_event['args']['amount'],
                 block_number=log["blockNumber"],
                 transaction_hash=log["transactionHash"].hex(),

@@ -281,12 +281,13 @@ class CollateralContract:
 
         return deny_event, receipt
 
-    async def slash_collateral(self, url, executor_uuid):
+    async def slash_collateral(self, executor_uuid, slash_amount_tao, url):
         """Slash collateral from a miner.
 
         Args:
-            url (str): URL containing information about the slash
             executor_uuid (str): Executor UUID for the slashing operation
+            slash_amount_tao (float): Amount to slash in TAO
+            url (str): URL containing information about the slash
 
         Returns:
             dict: Transaction receipt with slash event details
@@ -301,12 +302,14 @@ class CollateralContract:
             md5_checksum = calculate_md5_checksum(url)
             print(f"MD5 checksum: {md5_checksum}")
 
-        executor_uuid_bytes = UUID(executor_uuid).bytes
+        executor_uuid_bytes = self.get_uuid_bytes(executor_uuid)
+        slash_amount_wei = self.w3.to_wei(slash_amount_tao, "ether")
 
         tx_hash = await build_and_send_transaction(
             self.w3,
             self.contract.functions.slashCollateral(
                 executor_uuid_bytes,
+                slash_amount_wei,
                 url,
                 bytes.fromhex(md5_checksum),
             ),
@@ -418,3 +421,11 @@ class CollateralContract:
     async def get_miner_address_of_executor(self, executor_uuid):
         uuid_bytes = self.get_uuid_bytes(executor_uuid)
         return await self.contract.functions.executorToMiner(uuid_bytes).call()
+
+    async def get_burn_address(self):
+        """Get the burn address configured in the contract."""
+        return await self.contract.functions.BURN_ADDRESS().call()
+
+    async def get_trustee_address(self):
+        """Get the trustee address configured in the contract."""
+        return await self.contract.functions.TRUSTEE().call()
