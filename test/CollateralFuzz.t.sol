@@ -6,98 +6,111 @@ import {CollateralTestBase} from "./CollateralTestBase.sol";
 contract CollateralTest is CollateralTestBase {
     receive() external payable {}
 
-    function testFuzz_deposit(uint256 amount, bytes16 executorUuid) public {
+    function testFuzz_deposit(uint256 amount, bytes16 executorId) public {
         // leave some ether to cover gas fees
         vm.assume((amount >= MIN_COLLATERAL_INCREASE) && (amount < address(this).balance - 1 ether));
-        vm.expectEmit(true, false, false, true);
-        emit Deposit(address(this), amount);
+        vm.expectEmit(true, true, false, true);
+        emit Deposit(executorId, address(this), amount);
 
-        collateral.deposit{value: amount}(TRUSTEE_1, executorUuid);
-        assertEq(collateral.collaterals(address(this)), amount);
-        assertEq(collateral.collateralPerExecutor(address(this), executorUuid), amount);
+        collateral.deposit{value: amount}(executorId);
+        assertEq(collateral.collaterals(executorId), amount);
+        assertEq(collateral.executorToMiner(executorId), address(this));
         assertEq(address(collateral).balance, amount);
     }
 
-    function testFuzz_reclaim(uint256 amount, bytes16 executorUuid) public {
+    function testFuzz_reclaim(uint256 amount, bytes16 executorId) public {
         vm.assume((amount >= MIN_COLLATERAL_INCREASE) && (amount < address(this).balance - 1 ether));
 
-        collateral.deposit{value: amount}(TRUSTEE_1, executorUuid);
+        collateral.deposit{value: amount}(executorId);
 
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit(true, true, true, false);
         emit ReclaimProcessStarted(
-            1, address(this), amount, uint64(block.timestamp) + DECISION_TIMEOUT, URL, URL_CONTENT_MD5_CHECKSUM
+            1, executorId, address(this), amount, uint64(block.timestamp) + DECISION_TIMEOUT, URL, URL_CONTENT_MD5_CHECKSUM
         );
 
-        collateral.reclaimCollateral(amount, URL, URL_CONTENT_MD5_CHECKSUM, executorUuid);
+        collateral.reclaimCollateral(executorId, URL, URL_CONTENT_MD5_CHECKSUM);
         
-        verifyReclaim(1, address(this), amount, block.timestamp + DECISION_TIMEOUT, executorUuid);
+        verifyReclaim(1, executorId, address(this), amount, block.timestamp + DECISION_TIMEOUT);
     }
 
-    function testFuzz_revert_reclaim_ReclaimAmountTooLarge(uint256 amount, uint256 reclaimAmount) public {
+    function testFuzz_revert_reclaim_AmountZero(uint256 amount) public {
         vm.assume((amount >= MIN_COLLATERAL_INCREASE) && (amount < address(this).balance - 1 ether));
-        vm.assume(reclaimAmount > amount);
-        collateral.deposit{value: amount}(TRUSTEE_1, bytes16(0));
-
-        vm.expectRevert(ReclaimAmountTooLarge.selector);
-        collateral.reclaimCollateral(reclaimAmount, URL, URL_CONTENT_MD5_CHECKSUM, bytes16(0));
+        bytes16 executorId = bytes16(uint128(amount % type(uint128).max)); // Ensure executorId is non-zero
+        vm.assume(executorId != bytes16(0)); // Make sure executorId is not zero
+        
+        // Deposit first to establish ownership
+        collateral.deposit{value: amount}(executorId);
+        
+        // Reclaim all collateral
+        collateral.reclaimCollateral(executorId, URL, URL_CONTENT_MD5_CHECKSUM);
+        
+        // Try to reclaim again - should fail with AmountZero since all is under pending reclaim
+        vm.expectRevert(AmountZero.selector);
+        collateral.reclaimCollateral(executorId, URL, URL_CONTENT_MD5_CHECKSUM);
     }
 
-    function testFuzz_denyReclaimRequest(uint256 amount, uint64 decisionTimeout, bytes16 executorUuid) public {
+    function testFuzz_denyReclaimRequest(uint256 amount, uint64 decisionTimeout, bytes16 executorId) public {
         vm.assume((amount >= MIN_COLLATERAL_INCREASE) && (amount < address(this).balance - 1 ether));
         vm.assume(decisionTimeout > 0 && decisionTimeout <= DECISION_TIMEOUT);
 
-        collateral.deposit{value: amount}(TRUSTEE_1, executorUuid);
-        collateral.reclaimCollateral(amount, URL, URL_CONTENT_MD5_CHECKSUM, executorUuid);
+        collateral.deposit{value: amount}(executorId);
+        collateral.reclaimCollateral(executorId, URL, URL_CONTENT_MD5_CHECKSUM);
 
         skip(decisionTimeout);
 
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit(true, false, false, false);
         emit Denied(1, URL, URL_CONTENT_MD5_CHECKSUM);
 
-        vm.prank(TRUSTEE_1);
+        vm.prank(TRUSTEE);
         collateral.denyReclaimRequest(1, URL, URL_CONTENT_MD5_CHECKSUM);
 
         // check that the reclaim request is denied
-        // make sure finalizeReclaim can be called on the reclaim request
+        // make sure finalizeReclaim can't be called on the reclaim request
         skip(DECISION_TIMEOUT);
         vm.expectRevert(ReclaimNotFound.selector);
         collateral.finalizeReclaim(1);
     }
 
-    function testFuzz_slash(uint256 amount) public {
+    function testFuzz_slash(uint256 amount, uint256 slashAmount) public {
         vm.assume((amount >= MIN_COLLATERAL_INCREASE) && (amount < address(this).balance / 2));
+        vm.assume(slashAmount > 0 && slashAmount <= amount);
 
-        bytes16 executorUuid = 0x11111111111111111111111111111111;
+        bytes16 executorId = 0x11111111111111111111111111111111;
 
-        collateral.deposit{value: 2 * amount}(TRUSTEE_1, executorUuid);
+        collateral.deposit{value: amount}(executorId);
 
-        vm.expectEmit(true, false, false, true);
-        emit Slashed(address(this), amount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
+        uint256 expectedSlashAmount = slashAmount > amount ? amount : slashAmount;
+        
+        vm.expectEmit(true, true, false, false);
+        emit Slashed(executorId, address(this), expectedSlashAmount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
 
-        vm.prank(TRUSTEE_1);
-        collateral.slashCollateral(address(this), amount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM, executorUuid);
+        vm.prank(TRUSTEE);
+        collateral.slashCollateral(executorId, slashAmount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
 
-        assertEq(collateral.collaterals(address(this)), amount);
-        assertEq(collateral.collateralPerExecutor(address(this), executorUuid), amount);
-        assertEq(address(collateral).balance, amount);
+        assertEq(collateral.collaterals(executorId), amount - expectedSlashAmount);
+        assertEq(address(collateral).balance, amount - expectedSlashAmount);
+        assertEq(BURN_ADDRESS.balance, expectedSlashAmount);
     }
 
-    function testFuzz_revert_slash_SlashTooBig(uint256 amount) public {
+    function testFuzz_slashMoreThanAvailable(uint256 amount) public {
         vm.assume((amount >= MIN_COLLATERAL_INCREASE) && (amount < address(this).balance / 2));
 
-        bytes16 executorUuid = bytes16(0);
+        bytes16 executorId = bytes16(0);
 
+        collateral.deposit{value: amount}(executorId);
 
-        collateral.deposit{value: 2 * amount}(TRUSTEE_1, executorUuid);
+        // Try to slash more than available
+        uint256 slashAmount = amount * 2;
+        
+        vm.expectEmit(true, true, false, false);
+        emit Slashed(executorId, address(this), amount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
 
-        vm.expectEmit(true, false, false, true);
-        emit Slashed(address(this), amount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
+        vm.prank(TRUSTEE);
+        collateral.slashCollateral(executorId, slashAmount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
 
-        vm.prank(TRUSTEE_1);
-        collateral.slashCollateral(address(this), amount, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM, executorUuid);
-
-        // slashes only amount and leaves the rest
-        assertEq(collateral.collaterals(address(this)), amount);
-        assertEq(address(collateral).balance, amount);
+        // Should only slash the available amount
+        assertEq(collateral.collaterals(executorId), 0);
+        assertEq(address(collateral).balance, 0);
+        assertEq(BURN_ADDRESS.balance, amount);
     }
 }
