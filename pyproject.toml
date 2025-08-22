@@ -23,7 +23,8 @@ dependencies = [
     "substrate-interface>=1.7.11",
     "bittensor==9.0.0",
     "bittensor-wallet==3.0.3",
-    "eth-utils==2.2.2"
+    "eth-utils==2.2.2",
+    "ipykernel>=6.30.1",
 ]
 
 [project.urls]
@@ -36,3 +37,5 @@ include = ["celium_collateral_contracts"]
 
 [tool.setuptools.package-data]
 celium_collateral_contracts = ["*.json"]
+
+[tool.pdm]

@@ -23,3 +23,4 @@ deployments.json
 build/
 celium_collateral_contracts.egg-info/
 celium_collateral.egg-info/
+notebooks/
