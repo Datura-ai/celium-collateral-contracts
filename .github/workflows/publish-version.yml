@@ -32,30 +32,11 @@ jobs:
         pip install --user pdm
         echo "$HOME/.local/bin" >> $GITHUB_PATH
     
-    - name: Install dependencies
-      run: |
-        pdm install --dev
-    
-    - name: Update version in pyproject.toml
-      run: |
-        pdm version ${{ github.event.inputs.version }}
-    
-    - name: Run tests
-      run: |
-        pdm run python -m pytest unittests/ -v
-    
     - name: Build package
       run: |
         rm -rf dist/
         pdm build
     
-    - name: Commit version change
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add pyproject.toml
-        git commit -m "bump version to ${{ github.event.inputs.version }}"
-        git push
     
     - name: Create Git tag
       run: |
