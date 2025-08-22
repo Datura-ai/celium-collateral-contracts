@@ -10,6 +10,7 @@ The script will output the collateral amount in TAO (the native token).
 """
 import argparse
 import sys
+import asyncio
 from celium_collateral_contracts.common import (
     get_web3_connection,
     get_executor_collateral,
@@ -17,7 +18,7 @@ from celium_collateral_contracts.common import (
     get_miner_address_of_executor
 )
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(
         description="Query the collateral amount for a specific miner and executor UUID in a smart contract"
     )
@@ -39,8 +40,8 @@ def main():
     args = parser.parse_args()
     validate_address_format(args.contract_address)
     w3 = get_web3_connection(args.network)
-    collateral = get_executor_collateral(w3, args.contract_address, args.executor_uuid)
-    miner_address = get_miner_address_of_executor(w3, args.contract_address, args.executor_uuid)
+    collateral = await get_executor_collateral(w3, args.contract_address, args.executor_uuid)
+    miner_address = await get_miner_address_of_executor(w3, args.contract_address, args.executor_uuid)
 
     print(
         f"Collateral for miner {miner_address}, executor {args.executor_uuid}: {collateral} TAO"
@@ -48,7 +49,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
         sys.exit(1) 

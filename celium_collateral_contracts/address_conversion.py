@@ -7,32 +7,7 @@ used in blockchain systems. It supports conversion between SS58 addresses (used
 in Substrate-based chains) and H160 addresses (Ethereum-style addresses).
 """
 import hashlib
-
-import bittensor_wallet
 import scalecodec
-
-
-def ss58_to_pubkey(ss58_address: str) -> bytes:
-    """
-    Convert SS58 address to public key bytes.
-
-    Args:
-        ss58_address (str): The SS58 address to convert
-
-    Returns:
-        bytes: The 32-byte public key
-
-    Raises:
-        ValueError: If the SS58 address is invalid
-    """
-    try:
-        keypair = bittensor_wallet.Keypair(ss58_address=ss58_address)
-
-        return keypair.public_key
-
-    except Exception as e:
-        raise ValueError(
-            f"Error converting SS58 address to public key: {str(e)}")
 
 
 # https://github.com/opentensor/evm-bittensor/blob/main/examples/address-mapping.js

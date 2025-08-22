@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "celium-collateral"
-version = "1.1.2"
-description = "Collateral Smart Contract for Celium"
+version = "1.1.5"
+description = "Collateral Smart Contract for Lium"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -20,10 +20,8 @@ classifiers = [
 dependencies = [
     "web3>=6.0.0",  # compatible with eth-utils==2.2.2
     "requests>=2.32.3",
-    "substrate-interface>=1.7.11",
-    "bittensor==9.0.0",
-    "bittensor-wallet==3.0.3",
-    "eth-utils==2.2.2"
+    "eth-utils==2.2.2",
+    "scalecodec>=1.2.11"
 ]
 
 [project.urls]
