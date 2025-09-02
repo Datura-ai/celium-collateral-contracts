@@ -254,6 +254,6 @@ contract Collateral {
             executorToMiner[executorId] = address(0);
         }
 
-        emit Slashed(executorId, miner, amount, url, urlContentMd5Checksum);
+        emit Slashed(executorId, miner, actualSlashAmount, url, urlContentMd5Checksum);
     }
 }

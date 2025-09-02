@@ -1,3 +1,4 @@
+import sys
 from uuid import UUID
 from web3 import Web3
 from web3.contract import Contract
@@ -133,9 +134,9 @@ class CollateralContract:
         # Calculate MD5 checksum if URL is valid
         md5_checksum = "0" * 32
         if url.startswith(("http://", "https://")):
-            print("Calculating MD5 checksum of URL content...")
-            md5_checksum = calculate_md5_checksum(url)
-            print(f"MD5 checksum: {md5_checksum}")
+            print("Calculating MD5 checksum of URL content...", file=sys.stderr)
+            md5_checksum = await calculate_md5_checksum(url)
+            print(f"MD5 checksum: {md5_checksum}", file=sys.stderr)
 
         executor_uuid_bytes = self.get_uuid_bytes(executor_uuid)
 
@@ -158,7 +159,7 @@ class CollateralContract:
             receipt,
         )[0]
 
-        print("Event details:")
+        print("Event details:", file=sys.stderr)
         print(f"  Reclaim ID: {reclaim_event['args']['reclaimRequestId']}")
         print(f"  Executor ID: {reclaim_event['args']['executorId']}")
         print(f"  Miner Address: {reclaim_event['args']['miner']}")
@@ -229,7 +230,7 @@ class CollateralContract:
         reclaim_event = reclaim_events[0]
 
         if reclaim_event:
-            print("Event details:")
+            print("Event details:", file=sys.stderr)
             print(f"  Reclaim ID: {reclaim_event['args']['reclaimRequestId']}")
             print(f"  Executor ID: {reclaim_event['args']['executorId']}")
             print(
@@ -257,9 +258,9 @@ class CollateralContract:
         # Calculate MD5 checksum of the URL content
         md5_checksum = "0" * 32
         if url.startswith(("http://", "https://")):
-            print("Calculating MD5 checksum of URL content...")
-            md5_checksum = calculate_md5_checksum(url)
-            print(f"MD5 checksum: {md5_checksum}")
+            print("Calculating MD5 checksum of URL content...", file=sys.stderr)
+            md5_checksum = await calculate_md5_checksum(url)
+            print(f"MD5 checksum: {md5_checksum}", file=sys.stderr)
 
         tx_hash = await build_and_send_transaction(
             self.w3,
@@ -298,9 +299,9 @@ class CollateralContract:
         # Calculate MD5 checksum if URL is valid
         md5_checksum = "0" * 32
         if url.startswith(("http://", "https://")):
-            print("Calculating MD5 checksum of URL content...")
-            md5_checksum = calculate_md5_checksum(url)
-            print(f"MD5 checksum: {md5_checksum}")
+            print("Calculating MD5 checksum of URL content...", file=sys.stderr)
+            md5_checksum = await calculate_md5_checksum(url)
+            print(f"MD5 checksum: {md5_checksum}", file=sys.stderr)
 
         executor_uuid_bytes = self.get_uuid_bytes(executor_uuid)
         slash_amount_wei = self.w3.to_wei(slash_amount_tao, "ether")

@@ -28,7 +28,7 @@
 # Check if all required arguments are provided
 if [ "$#" -ne 5 ]; then
     echo "Error: Required arguments missing"
-    echo "Usage: $0 <netuid_u16> <trustee_h160_address> <min_collateral_increase_u256> <deny_timeout_u64>"
+    echo "Usage: $0 <netuid_u16> <trustee_h160_address> <burn_h160_address> <min_collateral_increase_u256> <deny_timeout_u64>"
     exit 1
 fi
 
@@ -59,6 +59,12 @@ fi
 # Validate trustee address format (0x followed by 40 hex characters)
 if ! [[ $TRUSTEE_ADDRESS =~ ^0x[a-fA-F0-9]{40}$ ]]; then
     echo "Error: Invalid trustee address format. Must be a valid H160 address (0x followed by 40 hex characters)"
+    exit 1
+fi
+
+# Validate burn address format (0x followed by 40 hex characters)
+if ! [[ $BURN_ADDRESS =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+    echo "Error: Invalid burn address format. Must be a valid H160 address (0x followed by 40 hex characters)"
     exit 1
 fi
 

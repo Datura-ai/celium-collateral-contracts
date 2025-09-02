@@ -359,4 +359,23 @@ contract CollateralTest is CollateralTestBase {
         vm.expectRevert(AmountZero.selector);
         collateral.slashCollateral(executorId, 1 ether, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
     }
+
+    function test_slashCollateral_WithZeroAmount() public {
+        bytes16 executorId = 0x11111111111111111111111111111111;
+        
+        vm.prank(DEPOSITOR1);
+        collateral.deposit{value: 1 ether}(executorId);
+        
+        uint256 collateralBefore = collateral.collaterals(executorId);
+        uint256 burnAddressBalanceBefore = BURN_ADDRESS.balance;
+        
+        vm.prank(TRUSTEE);
+        vm.expectEmit(true, true, false, false);
+        emit Slashed(executorId, DEPOSITOR1, 0, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
+        collateral.slashCollateral(executorId, 0, SLASH_REASON_URL, URL_CONTENT_MD5_CHECKSUM);
+        
+        assertEq(collateral.collaterals(executorId), collateralBefore);
+        assertEq(BURN_ADDRESS.balance, burnAddressBalanceBefore);
+        assertEq(collateral.executorToMiner(executorId), DEPOSITOR1);
+    }
 }

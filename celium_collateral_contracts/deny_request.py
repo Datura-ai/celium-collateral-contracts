@@ -51,7 +51,7 @@ async def deny_reclaim_request(
     md5_checksum = "0" * 32
     if url.startswith(("http://", "https://")):
         print("Calculating MD5 checksum of URL content...", file=sys.stderr)
-        md5_checksum = calculate_md5_checksum(url)
+        md5_checksum = await calculate_md5_checksum(url)
         print(f"MD5 checksum: {md5_checksum}", file=sys.stderr)
 
     tx_hash = build_and_send_transaction(
