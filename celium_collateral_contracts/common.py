@@ -17,7 +17,6 @@ import json
 import hashlib
 import uuid
 
-import bittensor
 import requests
 from web3 import Web3
 from web3.eth import AsyncEth
@@ -51,10 +50,7 @@ def get_web3_connection(network: str, rpc_url: str | None = None) -> Web3:
     if rpc_url:
         network_url = rpc_url
     else:
-        if network in RPC_URLS:
-            network_url = RPC_URLS[network]
-        else:
-            _, network_url = bittensor.utils.determine_chain_endpoint_and_network(network)
+        network_url = RPC_URLS[network]
 
     w3 = Web3(
         Web3.AsyncHTTPProvider(network_url),

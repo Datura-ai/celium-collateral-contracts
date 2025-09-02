@@ -1,24 +1,18 @@
 import argparse
+import asyncio
 
-import bittensor.utils
-from web3 import Web3
+from celium_collateral_contracts.common import get_web3_connection
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--network", default="finney")
     args = parser.parse_args()
 
-    _, network_url = bittensor.utils.determine_chain_endpoint_and_network(
-        args.network,
-    )
-
-    try:
-        w3 = Web3(Web3.WebsocketProvider(network_url))
-    except Exception:
-        w3 = Web3(Web3.LegacyWebSocketProvider(network_url))
-    print(w3.eth.get_block('latest')['number'])
+    w3 = get_web3_connection(args.network)
+    block = await w3.eth.get_block('latest')['number']
+    print(block)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
