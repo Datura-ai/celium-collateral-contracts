@@ -6,6 +6,7 @@ pragma solidity ^0.8.28;
 contract Collateral {
     uint16 public NETUID;
     address public TRUSTEE;
+    address public BURN_ADDRESS;
     uint64 public DECISION_TIMEOUT;
     uint256 public MIN_COLLATERAL_INCREASE;
 
@@ -57,17 +58,20 @@ contract Collateral {
     /// @notice Initializes a new Collateral contract with specified parameters
     /// @param netuid The netuid of the subnet
     /// @param trustee H160 address of the trustee who has permissions to slash collateral or deny reclaim requests
+    /// @param burnAddress H160 address where slashed collateral will be sent
     /// @param minCollateralIncrease The minimum amount that can be deposited or reclaimed
     /// @param decisionTimeout The time window (in seconds) for the trustee to deny a reclaim request
     /// @dev Reverts if any of the arguments is zero
-    constructor(uint16 netuid, address trustee, uint256 minCollateralIncrease, uint64 decisionTimeout) {
+    constructor(uint16 netuid, address trustee, address burnAddress, uint256 minCollateralIncrease, uint64 decisionTimeout) {
         // custom errors are not used here because it's a 1-time setup
         require(trustee != address(0), "Trustee address must be non-zero");
+        require(burnAddress != address(0), "Burn address must be non-zero");
         require(minCollateralIncrease > 0, "Min collateral increase must be greater than 0");
         require(decisionTimeout > 0, "Decision timeout must be greater than 0");
 
         NETUID = netuid;
         TRUSTEE = trustee;
+        BURN_ADDRESS = burnAddress;
         MIN_COLLATERAL_INCREASE = minCollateralIncrease;
         DECISION_TIMEOUT = decisionTimeout;
     }
@@ -221,7 +225,12 @@ contract Collateral {
     /// @dev Emits Slashed event with the executor's ID, miner's address and the amount slashed
     /// @dev Reverts with AmountZero if there is no collateral to slash
     /// @dev Reverts with TransferFailed if the TAO transfer fails
-    function slashCollateral(bytes16 executorId, string calldata url, bytes16 urlContentMd5Checksum)
+    function slashCollateral(
+        bytes16 executorId, 
+        uint256 slashAmount,
+        string calldata url, 
+        bytes16 urlContentMd5Checksum
+    )
         external
         onlyTrustee
     {
@@ -231,15 +240,20 @@ contract Collateral {
             revert AmountZero();
         }
 
-        collaterals[executorId] = 0;
+        uint256 actualSlashAmount = slashAmount > amount ? amount : slashAmount;
+        collaterals[executorId] -= actualSlashAmount;
         address miner = executorToMiner[executorId];
 
-        // burn the collateral
-        (bool success,) = payable(address(0)).call{value: amount}("");
+        // send slashed collateral to burn address
+        (bool success,) = payable(BURN_ADDRESS).call{value: actualSlashAmount}("");
         if (!success) {
             revert TransferFailed();
         }
-        executorToMiner[executorId] = address(0);
-        emit Slashed(executorId, miner, amount, url, urlContentMd5Checksum);
+
+        if (collaterals[executorId] == 0) {
+            executorToMiner[executorId] = address(0);
+        }
+
+        emit Slashed(executorId, miner, actualSlashAmount, url, urlContentMd5Checksum);
     }
 }

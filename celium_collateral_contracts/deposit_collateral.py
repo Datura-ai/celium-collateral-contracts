@@ -8,6 +8,7 @@ It handles validation of minimum collateral amounts, trustee verification, and
 executes the deposit transaction on the blockchain.
 """
 import asyncio
+import sys
 import argparse
 from web3 import Web3
 from uuid import UUID
@@ -122,7 +123,7 @@ async def main():
     )
 
     print(f"Successfully deposited {args.amount_tao} TAO")
-    print("Event details:")
+    print("Event details:", file=sys.stderr)
     print(f"  Executor Id: {deposit_event['args']['executorId']}")
     print(
         f"  Amount: {w3.from_wei(deposit_event['args']['amount'], 'ether')} TAO")

@@ -6,9 +6,8 @@ import {Collateral} from "../src/Collateral.sol";
 
 abstract contract CollateralTestBase is Test {
     uint16 constant NETUID = 1;
-    address constant TRUSTEE_1 = address(0x1000);
-    address constant TRUSTEE_2 = address(0x1001);
-    address constant TRUSTEE_3 = address(0x1002);
+    address constant TRUSTEE = address(0x1000);
+    address constant BURN_ADDRESS = address(0x2000);
     uint64 constant DECISION_TIMEOUT = 1 days;
     uint256 constant MIN_COLLATERAL_INCREASE = 1 ether;
     string constant URL = "https://reclaimreason.io";
@@ -19,48 +18,52 @@ abstract contract CollateralTestBase is Test {
 
     // this boilerplate code had to be copied from Collateral contract to be able to test events and errors
     // it's not possible to import events and errors from another contract
-    event Deposit(address indexed account, uint256 amount);
+    event Deposit(bytes16 indexed executorId, address indexed miner, uint256 amount);
     event ReclaimProcessStarted(
         uint256 indexed reclaimRequestId,
-        address indexed account,
+        bytes16 indexed executorId,
+        address indexed miner,
         uint256 amount,
         uint64 expirationTime,
         string url,
         bytes16 urlContentMd5Checksum
     );
-    event Reclaimed(uint256 indexed reclaimRequestId, address indexed account, uint256 amount);
+    event Reclaimed(uint256 indexed reclaimRequestId, bytes16 indexed executorId, address indexed miner, uint256 amount);
     event Denied(uint256 indexed reclaimRequestId, string url, bytes16 urlContentMd5Checksum);
-    event Slashed(address indexed account, uint256 amount, string url, bytes16 urlContentMd5Checksum);
+    event Slashed(
+        bytes16 indexed executorId,
+        address indexed miner,
+        uint256 amount,
+        string url,
+        bytes16 urlContentMd5Checksum
+    );
 
     error AmountZero();
     error BeforeDenyTimeout();
+    error ExecutorNotOwned();
     error InsufficientAmount();
     error InvalidDepositMethod();
     error NotTrustee();
     error PastDenyTimeout();
-    error ReclaimAmountTooLarge();
-    error ReclaimAmountTooSmall();
     error ReclaimNotFound();
     error TransferFailed();
+    error InsufficientCollateralForReclaim();
 
     function setUp() public virtual {
-        collateral = new Collateral(NETUID, MIN_COLLATERAL_INCREASE, DECISION_TIMEOUT);
-        payable(TRUSTEE_1).transfer(3 ether);
-        payable(TRUSTEE_2).transfer(3 ether);
-        payable(TRUSTEE_3).transfer(3 ether);
+        collateral = new Collateral(NETUID, TRUSTEE, BURN_ADDRESS, MIN_COLLATERAL_INCREASE, DECISION_TIMEOUT);
     }
 
     function verifyReclaim(
         uint256 reclaimRequestId,
-        address expectedAccount,
+        bytes16 expectedExecutorId,
+        address expectedMiner,
         uint256 expectedAmount,
-        uint256 expectedExpirationTime,
-        bytes16 expectedExecutorUuid
+        uint256 expectedDenyTimeout
     ) internal view {
-        (address account, uint256 amount, uint256 expirationTime, bytes16 executorUuid) = collateral.reclaims(reclaimRequestId);
-        assertEq(account, expectedAccount);
+        (bytes16 executorId, address miner, uint256 amount, uint64 denyTimeout) = collateral.reclaims(reclaimRequestId);
+        assertEq(executorId, expectedExecutorId);
+        assertEq(miner, expectedMiner);
         assertEq(amount, expectedAmount);
-        assertEq(expirationTime, expectedExpirationTime);
-        assertEq(executorUuid, expectedExecutorUuid);
+        assertEq(denyTimeout, expectedDenyTimeout);
     }
 }

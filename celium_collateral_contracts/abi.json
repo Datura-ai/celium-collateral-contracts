@@ -13,6 +13,11 @@
         "internalType": "address"
       },
       {
+        "name": "burnAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "minCollateralIncrease",
         "type": "uint256",
         "internalType": "uint256"
@@ -32,6 +37,19 @@
   {
     "type": "receive",
     "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "BURN_ADDRESS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -237,6 +255,11 @@
         "name": "executorId",
         "type": "bytes16",
         "internalType": "bytes16"
+      },
+      {
+        "name": "slashAmount",
+        "type": "uint256",
+        "internalType": "uint256"
       },
       {
         "name": "url",

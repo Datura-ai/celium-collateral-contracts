@@ -17,7 +17,6 @@ import json
 import hashlib
 import uuid
 
-import requests
 from web3 import Web3
 from web3.eth import AsyncEth
 from web3.contract import Contract
@@ -120,7 +119,7 @@ async def wait_for_receipt(w3, tx_hash, timeout=300, poll_latency=2):
     return await w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
 
 
-def calculate_md5_checksum(url):
+async def calculate_md5_checksum(url):
     """Calculate MD5 checksum of the content at the given URL.
 
     Args:
@@ -132,9 +131,13 @@ def calculate_md5_checksum(url):
     Raises:
         SystemExit: If there's an error fetching the URL content.
     """
-    response = requests.get(url)
-    response.raise_for_status()
-    return hashlib.md5(response.content).hexdigest()
+    import aiohttp
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            content = await response.read()
+            return hashlib.md5(content).hexdigest()
 
 
 async def get_revert_reason(w3, tx_hash, block_number):
