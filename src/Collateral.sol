@@ -184,7 +184,9 @@ contract Collateral {
         if (!success) {
             revert TransferFailed();
         }
-        executorToMiner[executorId] = address(0);
+        if (collaterals[executorId] == 0) {
+            executorToMiner[executorId] = address(0);
+        }
     }
 
     /// @notice Allows the trustee to deny a pending reclaim request before the timeout expires
