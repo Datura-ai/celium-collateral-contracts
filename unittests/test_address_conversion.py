@@ -38,6 +38,22 @@ def test_h160_to_ss58_accepts_unprefixed_address():
     assert result == expected
 
 
+def test_ss58_encode_two_byte_format_matches_scalecodec_vectors():
+    # Arrange — formats >= 64 take the 2-byte bit-packing branch; oracle: scalecodec 1.2.11
+    address = bytes(range(32))
+    expected_by_format = {
+        97: "fsEDLykFTBrkX4SCgh1EWqQ8xZkZnNnrLAgmmwDh2X1xXtTuL",
+        4242: "mHjaViprGauVVMTLsZA7P3nQMhBJdNTYvjQwd9cp3xEBUxmbQ",
+    }
+
+    for ss58_format, expected in expected_by_format.items():
+        # Act
+        result = _ss58_encode(address, ss58_format)
+
+        # Assert
+        assert result == expected
+
+
 def test_ss58_encode_rejects_reserved_formats():
     # Arrange
     address = bytes(32)
