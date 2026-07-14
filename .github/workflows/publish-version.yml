@@ -8,59 +8,69 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: publish-version-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
-      pull-requests: write
-      packages: write
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install PDM
       run: |
         pip install --user pdm
         echo "$HOME/.local/bin" >> $GITHUB_PATH
-    
+
     - name: Build package
       run: |
         rm -rf dist/
         pdm build
-    
-    
-    - name: Create Git tag
-      run: |
-        git tag v${{ github.event.inputs.version }}
-        git push origin v${{ github.event.inputs.version }}
-    
-    - name: Create GitHub Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: v${{ github.event.inputs.version }}
-        release_name: Release v${{ github.event.inputs.version }}
-        body: |
-          Release version ${{ github.event.inputs.version }}
-          
-          Auto-generated release from GitHub Actions.
-        draft: false
-        prerelease: false
-    
+
+    # Publish before tagging: if the upload fails, no tag or release is left
+    # behind. Each step below is guarded so the whole workflow can be safely
+    # re-run for the same version after a partial failure (e.g. "Re-run failed
+    # jobs" once the tag was pushed but the release step errored).
     - name: Publish to PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
         pip install twine
-        twine upload dist/*
+        twine upload --skip-existing dist/*
+
+    - name: Create Git tag
+      run: |
+        TAG="v${{ github.event.inputs.version }}"
+        if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists on origin, skipping"
+        else
+          git tag "$TAG"
+          git push origin "$TAG"
+        fi
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="v${{ github.event.inputs.version }}"
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo "Release $TAG already exists, skipping"
+        else
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --notes "Release version ${{ github.event.inputs.version }}. Auto-generated release from GitHub Actions."
+        fi
