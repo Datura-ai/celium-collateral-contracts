@@ -16,8 +16,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Trusted Publishing: the upload authenticates with this job's OIDC token, scoped by PyPI to this repo, this
+    # workflow file and the `pypi` environment (owner is the required reviewer; self-review is off). No PyPI token exists.
+    environment: pypi
     permissions:
       contents: write
+      id-token: write
 
     steps:
     - name: Checkout code
@@ -44,13 +48,16 @@ jobs:
     # behind. Each step below is guarded so the whole workflow can be safely
     # re-run for the same version after a partial failure (e.g. "Re-run failed
     # jobs" once the tag was pushed but the release step errored).
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+    - name: Check the version input matches pyproject.toml
       run: |
-        pip install twine
-        twine upload --skip-existing dist/*
+        want="${{ github.event.inputs.version }}"
+        have=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+        [ "$want" = "$have" ] || { echo "input version $want != pyproject.toml version $have"; exit 1; }
+
+    - name: Publish to PyPI (Trusted Publishing)
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      with:
+        skip-existing: true
 
     - name: Create Git tag
       run: |
