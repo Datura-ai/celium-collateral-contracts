@@ -16,8 +16,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Trusted Publishing: the upload authenticates with this job's OIDC token, scoped by PyPI to this repo, this
+    # workflow file and the `pypi` environment (owner is the required reviewer; self-review is off). No PyPI token exists.
+    environment: pypi
     permissions:
       contents: write
+      id-token: write
 
     steps:
     - name: Checkout code
@@ -44,17 +48,24 @@ jobs:
     # behind. Each step below is guarded so the whole workflow can be safely
     # re-run for the same version after a partial failure (e.g. "Re-run failed
     # jobs" once the tag was pushed but the release step errored).
-    - name: Publish to PyPI
+    - name: Check the version input matches pyproject.toml
       env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        VERSION: ${{ github.event.inputs.version }}
       run: |
-        pip install twine
-        twine upload --skip-existing dist/*
+        want="$VERSION"
+        have=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+        [ "$want" = "$have" ] || { echo "input version $want != pyproject.toml version $have"; exit 1; }
+
+    - name: Publish to PyPI (Trusted Publishing)
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      with:
+        skip-existing: true
 
     - name: Create Git tag
+      env:
+        VERSION: ${{ github.event.inputs.version }}
       run: |
-        TAG="v${{ github.event.inputs.version }}"
+        TAG="v$VERSION"
         if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
           echo "Tag $TAG already exists on origin, skipping"
         else
@@ -65,12 +76,13 @@ jobs:
     - name: Create GitHub Release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ github.event.inputs.version }}
       run: |
-        TAG="v${{ github.event.inputs.version }}"
+        TAG="v$VERSION"
         if gh release view "$TAG" >/dev/null 2>&1; then
           echo "Release $TAG already exists, skipping"
         else
           gh release create "$TAG" \
             --title "Release $TAG" \
-            --notes "Release version ${{ github.event.inputs.version }}. Auto-generated release from GitHub Actions."
+            --notes "Release version $VERSION. Auto-generated release from GitHub Actions."
         fi
